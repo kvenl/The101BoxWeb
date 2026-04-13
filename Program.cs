@@ -34,7 +34,12 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
-app.MapGet("/", () => Results.Content(Resources.HtmlPage, "text/html"));
+app.MapGet("/", () =>
+{
+    var devFile = Path.Combine(AppContext.BaseDirectory, "index.html");
+    var html    = File.Exists(devFile) ? File.ReadAllText(devFile) : Resources.HtmlPage;
+    return Results.Content(html, "text/html");
+});
 
 app.MapGet("/api/ports", () =>
     Results.Json(SerialPort.GetPortNames().OrderBy(p => p, StringComparer.Ordinal)));
@@ -176,62 +181,69 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 #conn-bar button:hover { background:#555; }
 #radio-info { margin-left:auto; color:#888; font-size:11px; }
 
-#app { display:flex; gap:6px; padding:6px; }
-#controls { flex:1; display:flex; flex-direction:column; gap:4px; min-width:580px; }
-#sliders { display:flex; gap:4px; }
+#status-bar { display:flex; align-items:center; gap:8px; padding:3px 10px; background:#0d0d0d; border-bottom:1px solid #222; font-size:11px; }
+.st-dot { font-size:14px; line-height:1; }
+.st-ok  { color:#00dd00; }
+.st-bad { color:#ff4444; }
+.st-warn{ color:#ffaa00; }
+#st-radio-lbl { flex:1; }
+#st-disc { margin-left:auto; background:#333; color:#ccc; border:1px solid #555; padding:2px 8px; cursor:pointer; font-size:11px; }
+#st-disc:hover { background:#555; }
 
-/* Frequency */
-#freq-section { display:flex; align-items:center; gap:8px; background:#000; padding:4px 8px; border:1px solid #333; }
-.freq-box {
-  font-family:monospace; font-size:24px; font-weight:bold;
-  padding:3px 10px; cursor:pointer; min-width:170px; text-align:center;
-  border:2px solid #555; letter-spacing:2px;
-}
-#freq-m { background:black; color:gold; }
-#freq-s { background:black; color:gold; font-size:17px; min-width:150px; }
-#band-col { display:flex; flex-direction:column; align-items:center; gap:3px; }
-#band { background:#222; color:cyan; padding:3px 10px; font-size:15px; font-weight:bold;
-        border:1px solid #555; min-width:55px; text-align:center; }
-#temp-val { font-size:11px; text-align:center; color:cyan; }
-#freq-controls { display:flex; align-items:center; gap:4px; margin-left:4px; }
-#freq-controls select { background:#222; color:#ccc; border:1px solid #444; padding:3px 4px; font-size:11px; }
+/* ── Main canvas (pixel-exact layout from Form1.Designer.cs, 727×241) ── */
+#canvas-wrap { padding:4px; overflow-x:auto; background:#111; }
+#canvas { position:relative; width:727px; height:250px; background:#0d0d0d; }
 
-/* Buttons */
-.btn-row { display:flex; gap:3px; flex-wrap:wrap; align-items:center; padding:2px 0; }
+/* Buttons — DarkGreen / Yellow / White border, matching desktop exactly */
 .btn {
+  position:absolute;
   background:#006400; color:#ff0; border:2px solid #fff;
-  font-family:Verdana,sans-serif; font-size:11px; font-weight:bold;
-  padding:4px 5px; cursor:pointer; min-width:44px; min-height:34px;
-  text-align:center; line-height:1.2;
+  font-family:Verdana,sans-serif; font-size:8pt; font-weight:bold;
+  cursor:pointer; text-align:center; line-height:1.3; padding:0;
 }
-.btn:hover { background:#00008b; }
-.btn.active { background:#8b0000; }
+.btn:hover  { background:#00008b; }
 .btn:active { background:#cc0000; }
+.btn.active { background:#8b0000; }
 
-#btn-rx1 { background:silver; color:#00008b; border-color:#aaa; }
-#btn-rx1.active { background:#8b0000; color:#ff0; border-color:#fff; }
-#btn-rx2 { background:#00008b; color:silver; border-color:#aaa; }
-#btn-rx2.active { background:#8b0000; color:#ff0; border-color:#fff; }
+#btn-rx1 { background:silver; color:#00008b; }
+#btn-rx1.active { background:#8b0000; color:#ff0; }
+#btn-rx2 { background:#00008b; color:silver; }
+#btn-rx2.active { background:#8b0000; color:#ff0; }
 
-.sep { width:1px; background:#444; align-self:stretch; margin:0 3px; }
-.slbl { font-size:10px; color:#666; white-space:nowrap; }
+/* Frequency boxes */
+.freq-box {
+  position:absolute; background:#000; color:gold;
+  font-family:'Courier New',monospace; font-size:20px; font-weight:bold;
+  border:2px solid #555; text-align:center; letter-spacing:1px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
 
-/* LEV */
-#lev-section { display:flex; align-items:center; gap:5px; }
-#lev-val { font-family:monospace; font-size:13px; min-width:80px; text-align:center;
-           color:limegreen; background:#000; padding:2px 6px; border:1px solid #444; }
+/* Labels / value displays */
+#band     { position:absolute; font-size:10px; font-weight:bold; color:cyan; background:#000; text-align:center; border:1px solid #333; }
+#temp-val { position:absolute; font-size:10px; font-weight:bold; color:cyan; background:#000; text-align:center; }
+#lev-val  { position:absolute; font-family:monospace; font-size:9px; color:limegreen; background:#000; text-align:center; border:1px solid #444; display:flex; align-items:center; justify-content:center; }
+.sl-lbl   { position:absolute; font-size:7pt; color:#aaa; text-align:center; }
+.sl-val   { position:absolute; font-family:monospace; font-size:9px; color:gold; background:#000; text-align:center; border:1px solid #333; display:flex; align-items:center; justify-content:center; }
 
 /* Sliders */
-.slider-col { display:flex; flex-direction:column; align-items:center; gap:2px;
-              padding:5px 4px; background:#1a1a1a; border:1px solid #333; min-width:40px; }
-.slider-col label { font-size:10px; color:#999; text-align:center; line-height:1.2; }
-.slider-col .val { font-family:monospace; font-size:11px; color:gold; }
-input[type=range].vslider { writing-mode:vertical-lr; direction:rtl; width:28px; height:115px; cursor:pointer; accent-color:#888; }
+input[type=range].vslider { position:absolute; writing-mode:vertical-lr; direction:rtl; cursor:pointer; accent-color:#888; }
 #sl-pwr { accent-color:#cc0000; }
-.pwr-col { border-color:#440000; }
+
+/* Step select inside canvas */
+.cv-sel { position:absolute; background:#006400; color:#ff0; border:1px solid #fff; font-family:Verdana,sans-serif; font-size:7pt; font-weight:bold; }
 </style>
 </head>
 <body>
+
+<!-- Status bar (always visible) -->
+<div id="status-bar">
+  <span class="st-dot st-warn" id="st-ws-dot">&#9679;</span>
+  <span id="st-ws-lbl">Server: connecting...</span>
+  <span style="color:#444; margin:0 6px;">&#x2502;</span>
+  <span class="st-dot st-bad" id="st-radio-dot">&#9679;</span>
+  <span id="st-radio-lbl">Radio: not connected</span>
+  <button id="st-disc" style="display:none" onclick="disconnectPort()">Disconnect</button>
+</div>
 
 <!-- Connection bar (hidden when connected) -->
 <div id="conn-bar">
@@ -243,146 +255,91 @@ input[type=range].vslider { writing-mode:vertical-lr; direction:rtl; width:28px;
   <span id="radio-info"></span>
 </div>
 
-<!-- Main UI -->
-<div id="app">
-  <div id="controls">
+<!-- Canvas: pixel-exact layout from Form1.Designer.cs (727×241) -->
+<div id="canvas-wrap"><div id="canvas">
+  <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:56px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
+  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;font-size:16px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
+  <div id="band"     style="left:1px;top:119px;width:100px;height:14px;">---</div>
+  <div id="temp-val" style="left:552px;top:212px;width:44px;height:20px;">--&#176;C</div>
+  <div id="lev-val"  style="left:593px;top:204px;width:44px;height:39px;">+00 dB</div>
 
-    <!-- FREQUENCY ROW -->
-    <div id="freq-section">
-      <div>
-        <div id="freq-m" class="freq-box" onclick="sendCmd('VS0;')" title="Click to focus Main VFO"> .   .   </div>
-        <div id="freq-s" class="freq-box" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO"> .   .   </div>
-      </div>
-      <div id="band-col">
-        <div id="band">---</div>
-        <div id="temp-val">--&#176;C</div>
-      </div>
-      <div id="freq-controls">
-        <select id="step">
-          <option value="100">100 Hz</option>
-          <option value="500">500 Hz</option>
-          <option value="1000" selected>1 kHz</option>
-          <option value="5000">5 kHz</option>
-          <option value="9000">9 kHz</option>
-          <option value="20000">20 kHz</option>
-          <option value="50000">50 kHz</option>
-        </select>
-        <button class="btn" onclick="freqStep(1)">+</button>
-        <button class="btn" onclick="freqStep(-1)">&minus;</button>
-        <button class="btn" oncontextmenu="bandStep(-1);return false;"
-                onclick="bandStep(1)" title="Click=Band up  Right-click=Band down">BAND</button>
-      </div>
-      <button class="btn" onclick="sendCmd('SV;')" style="margin-left:8px;">SWAP</button>
-    </div>
+  <div class="sl-lbl" style="left:1px;top:111px;width:45px;">MAIN RF</div>
+  <input type="range" class="vslider" id="sl-rfgain" min="0" max="255" value="255" style="left:9px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-rfgain',this.value)">
+  <div class="sl-val" id="sl-rfgain-val" style="left:1px;top:226px;width:45px;height:16px;">100</div>
 
-    <!-- MODE + SCOPE + SPAN -->
-    <div class="btn-row">
-      <button class="btn" id="btn-usb"  onclick="sendCmd(modeCmd('2'))">USB</button>
-      <button class="btn" id="btn-lsb"  onclick="sendCmd(modeCmd('1'))">LSB</button>
-      <button class="btn" id="btn-cw"   onclick="sendCmd(modeCmd('3'))">CW</button>
-      <button class="btn" id="btn-am"   onclick="sendCmd(modeCmd('5'))">AM</button>
-      <button class="btn" id="btn-fm"   onclick="sendCmd(modeCmd('4'))">FM</button>
-      <button class="btn" id="btn-dig"  onclick="sendCmd(modeCmd('C'))">DIG</button>
-      <div class="sep"></div>
-      <button class="btn" id="btn-center" onclick="scopeCmd('center')">CENTER</button>
-      <button class="btn" id="btn-cursor" onclick="scopeCmd('cursor')">CURSOR</button>
-      <button class="btn" id="btn-fix"    onclick="scopeCmd('fix')">FIX</button>
-      <div class="sep"></div>
-      <span class="slbl">SPAN:</span>
-      <button class="btn" id="btn-ssb1" onclick="ssbCmd(1)">SSB1</button>
-      <button class="btn" id="btn-ssb2" onclick="ssbCmd(2)">SSB2</button>
-      <button class="btn" id="btn-ssb3" onclick="ssbCmd(3)">SSB3</button>
-      <button class="btn" id="btn-ssb4" onclick="ssbCmd(4)">SSB4</button>
-      <button class="btn" id="btn-ssb5" onclick="ssbCmd(5)">SSB5</button>
-      <button class="btn" id="btn-ssb6" onclick="ssbCmd(6)">SSB6</button>
-    </div>
+  <div class="sl-lbl" style="left:48px;top:111px;width:46px;">MAIN VOL</div>
+  <input type="range" class="vslider" id="sl-vol" min="0" max="255" value="0" style="left:56px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-vol',this.value)">
+  <div class="sl-val" id="sl-vol-val" style="left:48px;top:226px;width:46px;height:16px;">000</div>
 
-    <!-- ANT + AMP + ATT -->
-    <div class="btn-row">
-      <span class="slbl">ANT:</span>
-      <button class="btn" id="btn-ant1" onclick="sendCmd(antCmd(1))">ANT1</button>
-      <button class="btn" id="btn-ant2" onclick="sendCmd(antCmd(2))">ANT2</button>
-      <button class="btn" id="btn-ant3" onclick="sendCmd(antCmd(3))">ANT3</button>
-      <div class="sep"></div>
-      <span class="slbl">AMP:</span>
-      <button class="btn" id="btn-ipo"  onclick="sendCmd(ipoCmd(0))">IPO</button>
-      <button class="btn" id="btn-amp1" onclick="sendCmd(ipoCmd(1))">AMP1</button>
-      <button class="btn" id="btn-amp2" onclick="sendCmd(ipoCmd(2))">AMP2</button>
-      <div class="sep"></div>
-      <span class="slbl">ATT:</span>
-      <button class="btn" id="btn-att0"  onclick="sendCmd(attCmd(0))">0 dB</button>
-      <button class="btn" id="btn-att6"  onclick="sendCmd(attCmd(1))">6 dB</button>
-      <button class="btn" id="btn-att12" onclick="sendCmd(attCmd(2))">12 dB</button>
-      <button class="btn" id="btn-att18" onclick="sendCmd(attCmd(3))">18 dB</button>
-    </div>
+  <div class="sl-lbl" style="left:98px;top:111px;width:45px;">SUB RF</div>
+  <input type="range" class="vslider" id="sl-srfgain" min="0" max="255" value="255" style="left:106px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-srfgain',this.value)">
+  <div class="sl-val" id="sl-srfgain-val" style="left:98px;top:226px;width:45px;height:16px;">100</div>
 
-    <!-- RX + NR + DNF + SQL + TUNER -->
-    <div class="btn-row">
-      <button class="btn" id="btn-rx1" onclick="rxCmd('rx1')"
-              oncontextmenu="sendCmd('MUTEBOTH');return false;"
-              title="Click=toggle mute RX1  Right-click=mute/unmute both">RX1</button>
-      <button class="btn" id="btn-rx2" onclick="rxCmd('rx2')"
-              oncontextmenu="sendCmd('MUTEBOTH');return false;"
-              title="Click=toggle mute RX2  Right-click=mute/unmute both">RX2</button>
-      <button class="btn" id="btn-nr"    onclick="nrCmd()">NR</button>
-      <button class="btn" id="btn-dnf"   onclick="dnfCmd()">DNF</button>
-      <button class="btn" id="btn-rfsql" onclick="rfSqlCmd()">RF/SQL<br>MAIN</button>
-      <div class="sep"></div>
-      <span class="slbl">TUNER:</span>
-      <button class="btn" id="btn-inttune"   onclick="sendCmd('AC001;');sendCmd('AC002;')">Int<br>Tune</button>
-      <button class="btn" id="btn-itune-on"  onclick="sendCmd('AC001;')">Tune<br>ON</button>
-      <button class="btn" id="btn-itune-off" onclick="sendCmd('AC000;')">Tune<br>OFF</button>
-      <button class="btn" id="btn-exttune"
-              onmousedown="extTuneDown()" onmouseup="extTuneUp()"
-              ontouchstart="extTuneDown();return false;" ontouchend="extTuneUp()">Ext<br>Tuner</button>
-    </div>
+  <div class="sl-lbl" style="left:145px;top:111px;width:46px;">SUB VOL</div>
+  <input type="range" class="vslider" id="sl-svol" min="0" max="255" value="0" style="left:153px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-svol',this.value)">
+  <div class="sl-val" id="sl-svol-val" style="left:145px;top:226px;width:46px;height:16px;">000</div>
 
-    <!-- LEV -->
-    <div id="lev-section">
-      <span class="slbl">LEVEL SHIFT:</span>
-      <button class="btn" onclick="sendCmd('LEV-')" style="min-width:30px;">&minus;</button>
-      <div id="lev-val">+00.0 dB</div>
-      <button class="btn" onclick="sendCmd('LEV+')" style="min-width:30px;">+</button>
-      <button class="btn" onclick="sendCmd('LEVRESET')" style="min-width:40px;">RESET</button>
-    </div>
+  <div class="sl-lbl" style="left:660px;top:4px;width:45px;">POWER</div>
+  <input type="range" class="vslider" id="sl-pwr" min="5" max="100" value="100" style="left:668px;top:15px;width:28px;height:120px;" oninput="sliderChange('sl-pwr',this.value)">
+  <div class="sl-val" id="sl-pwr-val" style="left:660px;top:138px;width:45px;height:16px;">100</div>
 
-  </div><!-- #controls -->
+  <button class="btn" style="left:195px;top:1px;width:88px;height:40px;" onclick="bandStep(1)" oncontextmenu="bandStep(-1);return false;" title="Click=Band up  Right-click=Band down">BAND</button>
+  <button class="btn" style="left:195px;top:41px;width:44px;height:40px;" onclick="freqStep(-1)">[-]</button>
+  <button class="btn" style="left:239px;top:41px;width:44px;height:40px;" onclick="freqStep(1)">[+]</button>
+  <button class="btn" style="left:195px;top:81px;width:88px;height:40px;" onclick="sendCmd('SV;')">&lt;===&gt;</button>
+  <button class="btn" id="btn-usb" style="left:195px;top:121px;width:44px;height:40px;" onclick="sendCmd(modeCmd('2'))">USB</button>
+  <button class="btn" id="btn-lsb" style="left:239px;top:121px;width:44px;height:40px;" onclick="sendCmd(modeCmd('1'))">LSB</button>
+  <button class="btn" id="btn-am"  style="left:195px;top:161px;width:44px;height:40px;" onclick="sendCmd(modeCmd('5'))">AM</button>
+  <button class="btn" id="btn-fm"  style="left:239px;top:161px;width:44px;height:40px;" onclick="sendCmd(modeCmd('4'))">FM</button>
+  <button class="btn" id="btn-cw"  style="left:195px;top:201px;width:44px;height:40px;" onclick="sendCmd(modeCmd('3'))">CW</button>
+  <button class="btn" id="btn-dig" style="left:239px;top:201px;width:44px;height:40px;" onclick="sendCmd(modeCmd('C'))">DIG</button>
 
-  <!-- SLIDERS -->
-  <div id="sliders">
-    <div class="slider-col">
-      <label>RF<br>GAIN</label>
-      <input type="range" class="vslider" id="sl-rfgain" min="0" max="255" value="255"
-             oninput="sliderChange('sl-rfgain',this.value)">
-      <span class="val" id="sl-rfgain-val">100</span>
-    </div>
-    <div class="slider-col">
-      <label>VOL</label>
-      <input type="range" class="vslider" id="sl-vol" min="0" max="255" value="0"
-             oninput="sliderChange('sl-vol',this.value)">
-      <span class="val" id="sl-vol-val">000</span>
-    </div>
-    <div class="slider-col">
-      <label>SRF<br>GAIN</label>
-      <input type="range" class="vslider" id="sl-srfgain" min="0" max="255" value="255"
-             oninput="sliderChange('sl-srfgain',this.value)">
-      <span class="val" id="sl-srfgain-val">100</span>
-    </div>
-    <div class="slider-col">
-      <label>SVOL</label>
-      <input type="range" class="vslider" id="sl-svol" min="0" max="255" value="0"
-             oninput="sliderChange('sl-svol',this.value)">
-      <span class="val" id="sl-svol-val">000</span>
-    </div>
-    <div class="slider-col pwr-col">
-      <label>PWR</label>
-      <input type="range" class="vslider" id="sl-pwr" min="5" max="100" value="100"
-             oninput="sliderChange('sl-pwr',this.value)">
-      <span class="val" id="sl-pwr-val">100</span>
-    </div>
-  </div><!-- #sliders -->
+  <button class="btn" id="btn-ant1"  style="left:284px;top:1px;width:88px;height:40px;" onclick="sendCmd(antCmd(1))">ANT1</button>
+  <button class="btn" id="btn-ant2"  style="left:284px;top:41px;width:88px;height:40px;" onclick="sendCmd(antCmd(2))">ANT2</button>
+  <button class="btn" id="btn-ant3"  style="left:284px;top:81px;width:88px;height:40px;" onclick="sendCmd(antCmd(3))">ANT3/RX</button>
+  <button class="btn" id="btn-rfsql" style="left:284px;top:121px;width:88px;height:40px;" onclick="rfSqlCmd()">RF/SQL<br>MAIN</button>
+  <button class="btn" id="btn-rx1"   style="left:284px;top:161px;width:88px;height:40px;" onclick="rxCmd('rx1')" oncontextmenu="sendCmd('MUTEBOTH');return false;" title="Click=toggle MAIN RX  Right-click=mute/unmute both">MAIN<br>RX</button>
+  <button class="btn" id="btn-rx2"   style="left:284px;top:201px;width:87px;height:40px;" onclick="rxCmd('rx2')" oncontextmenu="sendCmd('MUTEBOTH');return false;" title="Click=toggle SUB RX  Right-click=mute/unmute both">SUB<br>RX</button>
 
-</div><!-- #app -->
+  <button class="btn" id="btn-ipo"    style="left:373px;top:1px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(0))">IPO</button>
+  <button class="btn" id="btn-amp1"   style="left:373px;top:41px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(1))">AMP1</button>
+  <button class="btn" id="btn-amp2"   style="left:373px;top:81px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(2))">AMP2</button>
+  <button class="btn" id="btn-cursor" style="left:373px;top:121px;width:88px;height:40px;" onclick="scopeCmd('cursor')">CURSOR</button>
+  <button class="btn" id="btn-center" style="left:373px;top:161px;width:88px;height:40px;" onclick="scopeCmd('center')">CENTER</button>
+  <button class="btn" id="btn-fix"    style="left:373px;top:201px;width:88px;height:40px;" onclick="scopeCmd('fix')">FIX</button>
+
+  <button class="btn" id="btn-att0"  style="left:462px;top:1px;width:44px;height:40px;" onclick="sendCmd(attCmd(0))">ATT<br>OFF</button>
+  <button class="btn" id="btn-att12" style="left:462px;top:41px;width:44px;height:40px;" onclick="sendCmd(attCmd(2))">-12<br>dB</button>
+  <button class="btn" id="btn-nr"    style="left:462px;top:81px;width:44px;height:40px;" onclick="nrCmd()">NR</button>
+  <button class="btn" id="btn-ssb5"  style="left:462px;top:121px;width:44px;height:40px;" onclick="ssbCmd(5)">20 k</button>
+  <button class="btn" id="btn-ssb1"  style="left:462px;top:161px;width:44px;height:40px;" onclick="ssbCmd(1)">100</button>
+  <button class="btn" id="btn-ssb3"  style="left:462px;top:201px;width:44px;height:40px;" onclick="ssbCmd(3)">500</button>
+
+  <button class="btn" id="btn-att6"  style="left:505px;top:1px;width:44px;height:40px;" onclick="sendCmd(attCmd(1))">-6<br>dB</button>
+  <button class="btn" id="btn-att18" style="left:505px;top:41px;width:44px;height:40px;" onclick="sendCmd(attCmd(3))">-18<br>dB</button>
+  <button class="btn" id="btn-dnf"   style="left:505px;top:81px;width:44px;height:40px;" onclick="dnfCmd()">BC</button>
+  <button class="btn" id="btn-ssb6"  style="left:505px;top:121px;width:44px;height:40px;" onclick="ssbCmd(6)">50 k</button>
+  <button class="btn" id="btn-ssb2"  style="left:505px;top:161px;width:44px;height:40px;" onclick="ssbCmd(2)">200</button>
+  <button class="btn" id="btn-ssb4"  style="left:505px;top:201px;width:44px;height:40px;" onclick="ssbCmd(4)">1 M</button>
+
+  <button class="btn" id="btn-inttune"   style="left:550px;top:1px;width:88px;height:40px;" onclick="sendCmd('AC001;');sendCmd('AC002;')">Int Tuner</button>
+  <button class="btn" id="btn-itune-on"  style="left:550px;top:41px;width:44px;height:40px;" onclick="sendCmd('AC001;')">On</button>
+  <button class="btn" id="btn-itune-off" style="left:594px;top:41px;width:44px;height:40px;" onclick="sendCmd('AC000;')">Off</button>
+  <button class="btn" id="btn-exttune"   style="left:550px;top:81px;width:88px;height:40px;" onmousedown="extTuneDown()" onmouseup="extTuneUp()" ontouchstart="extTuneDown();return false;" ontouchend="extTuneUp()">External<br>Tuner</button>
+  <button class="btn" style="left:550px;top:121px;width:88px;height:40px;" onclick="sendCmd('LEVRESET')">RESET<br>LEVEL</button>
+  <button class="btn" style="left:550px;top:161px;width:44px;height:40px;" onclick="sendCmd('LEV-')">[-]</button>
+  <button class="btn" style="left:594px;top:161px;width:44px;height:40px;" onclick="sendCmd('LEV+')">[+]</button>
+
+  <select id="step" class="cv-sel" style="left:640px;top:161px;width:87px;height:22px;">
+    <option value="100">100 Hz</option>
+    <option value="500">500 Hz</option>
+    <option value="1000" selected>1 kHz</option>
+    <option value="5000">5 kHz</option>
+    <option value="9000">9 kHz</option>
+    <option value="20000">20 kHz</option>
+    <option value="50000">50 kHz</option>
+  </select>
+</div></div>
 
 <script>
 let ws = null;
@@ -397,10 +354,16 @@ const timers = {};
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connect() {
+  setWsSt('warn', 'Server: connecting...');
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onmessage = e => { const m = JSON.parse(e.data); if (m.type==='state') applyState(m.data); };
-  ws.onclose   = () => setTimeout(connect, 2000);
+  ws.onopen    = () => setWsSt('ok',  'Server: connected');
+  ws.onclose   = () => { setWsSt('bad', 'Server: disconnected \u2014 reconnecting...'); setTimeout(connect, 2000); };
   ws.onerror   = () => ws.close();
+}
+function setWsSt(cls, txt) {
+  document.getElementById('st-ws-dot').className   = `st-dot st-${cls}`;
+  document.getElementById('st-ws-lbl').textContent = txt;
 }
 function sendCmd(cmd) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({cmd}));
@@ -411,6 +374,9 @@ function applyState(s) {
   state = s;
   document.getElementById('conn-bar').style.display = s.connected ? 'none' : 'flex';
   document.getElementById('radio-info').textContent  = s.connected ? `${s.radioModel}  @  ${s.comPort}` : '';
+  document.getElementById('st-radio-dot').className   = `st-dot ${s.connected ? 'st-ok' : 'st-bad'}`;
+  document.getElementById('st-radio-lbl').textContent = s.connected ? `Radio: ${s.radioModel}  \u2014  ${s.comPort}` : 'Radio: not connected';
+  document.getElementById('st-disc').style.display    = s.connected ? '' : 'none';
 
   updateFreqs(s);
   document.getElementById('band').textContent = bandName(s.mainFocused ? s.mainFreqHz : s.subFreqHz);
