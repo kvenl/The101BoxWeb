@@ -6,6 +6,12 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
+
+// The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
+// version 0.3 by Kees, ON9KVE
+// date : 13 apr 2026
+
+
 // ── parse command-line arguments ─────────────────────────────────────────────
 var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
 string comPort  = Arg(cmdArgs, "--port",  "");
@@ -173,13 +179,9 @@ public const string HtmlPage = """
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12px; user-select:none; }
 
-#conn-bar { display:flex; align-items:center; gap:8px; padding:5px 10px; background:#1a1a1a; border-bottom:2px solid #333; }
-#conn-bar.hidden { display:none; }
-#conn-label { color:#ff4444; font-weight:bold; }
-#conn-bar select { background:#222; color:#ccc; border:1px solid #555; padding:3px 6px; }
-#conn-bar button { background:#333; color:#ccc; border:1px solid #555; padding:3px 10px; cursor:pointer; }
-#conn-bar button:hover { background:#555; }
-#radio-info { margin-left:auto; color:#888; font-size:11px; }
+#radio-info { color:#888; font-size:11px; }
+#st-refresh { background:#333; color:#ccc; border:1px solid #555; padding:2px 6px; cursor:pointer; font-size:13px; margin-left:6px; }
+#st-refresh:hover { background:#555; }
 
 #status-bar { display:flex; align-items:center; gap:8px; padding:3px 10px; background:#0d0d0d; border-bottom:1px solid #222; font-size:11px; }
 .st-dot { font-size:14px; line-height:1; }
@@ -201,9 +203,11 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
   font-family:Verdana,sans-serif; font-size:8pt; font-weight:bold;
   cursor:pointer; text-align:center; line-height:1.3; padding:0;
 }
-.btn:hover  { background:#00008b; }
+.btn:hover  { background:#006400; }
 .btn:active { background:#cc0000; }
 .btn.active { background:#8b0000; }
+
+#btn-exttune:hover { background:#00008b; }
 
 #btn-rx1 { background:silver; color:#00008b; }
 #btn-rx1.active { background:#8b0000; color:#ff0; }
@@ -219,15 +223,47 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 }
 
 /* Labels / value displays */
-#band     { position:absolute; font-size:10px; font-weight:bold; color:cyan; background:#000; text-align:center; border:1px solid #333; }
 #temp-val { position:absolute; font-size:10px; font-weight:bold; color:cyan; background:#000; text-align:center; }
 #lev-val  { position:absolute; font-family:monospace; font-size:13px; color:limegreen; background:#000; text-align:center; border:1px solid #444; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.4; }
 .sl-lbl   { position:absolute; font-size:7pt; color:#fff; text-align:center; }
 .sl-val   { position:absolute; font-family:monospace; font-size:14px; color:gold; background:#000; text-align:center; border:1px solid #333; display:flex; align-items:center; justify-content:center; }
 
 /* Sliders */
-input[type=range].vslider { position:absolute; writing-mode:vertical-lr; direction:rtl; cursor:pointer; accent-color:#888; }
-#sl-pwr { accent-color:#cc0000; }
+input[type=range].vslider {
+  position:absolute; writing-mode:vertical-lr; direction:rtl; cursor:pointer;
+  -webkit-appearance:none; appearance:none;
+  background-color:silver;
+  background-image:repeating-linear-gradient(to bottom,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 10px);
+  border:1px solid #aaa; border-radius:2px;
+}
+/* MAIN sliders: silver body, thin grey groove, dark blue knob */
+input[type=range].vslider::-webkit-slider-runnable-track { background:#888; width:3px; border-radius:2px; }
+input[type=range].vslider::-moz-range-track             { background:#888; width:3px; border-radius:2px; }
+input[type=range].vslider::-webkit-slider-thumb {
+  -webkit-appearance:none;
+  width:26px; height:10px; border-radius:2px;
+  border:1px solid #000044; cursor:pointer; background:#00008b;
+}
+input[type=range].vslider::-moz-range-thumb {
+  width:26px; height:10px; border-radius:2px;
+  border:1px solid #000044; cursor:pointer; background:#00008b;
+}
+/* SUB sliders: dark blue body, light groove, silver knob */
+#sl-srfgain, #sl-svol {
+  background-color:#00008b;
+  background-image:repeating-linear-gradient(to bottom,rgba(180,180,220,.6) 0,rgba(180,180,220,.6) 1px,transparent 1px,transparent 10px);
+  border-color:#000055;
+}
+#sl-srfgain::-webkit-slider-runnable-track, #sl-svol::-webkit-slider-runnable-track { background:#8888cc; }
+#sl-srfgain::-moz-range-track,              #sl-svol::-moz-range-track             { background:#8888cc; }
+#sl-srfgain::-webkit-slider-thumb, #sl-svol::-webkit-slider-thumb { background:silver; border-color:#888; }
+#sl-srfgain::-moz-range-thumb,     #sl-svol::-moz-range-thumb    { background:silver; border-color:#888; }
+/* POWER slider: dark red body, red knob */
+#sl-pwr { background-color:#441111; background-image:repeating-linear-gradient(to bottom,rgba(180,130,130,.6) 0,rgba(180,130,130,.6) 1px,transparent 1px,transparent 10px); border-color:#220000; }
+#sl-pwr::-webkit-slider-runnable-track { background:#882222; }
+#sl-pwr::-moz-range-track             { background:#882222; }
+#sl-pwr::-webkit-slider-thumb { background:#cc0000; border-color:#880000; }
+#sl-pwr::-moz-range-thumb     { background:#cc0000; border-color:#880000; }
 
 /* Step select inside canvas */
 .cv-sel { position:absolute; background:#006400; color:#ff0; border:1px solid #fff; font-family:Verdana,sans-serif; font-size:7pt; font-weight:bold; }
@@ -242,24 +278,14 @@ input[type=range].vslider { position:absolute; writing-mode:vertical-lr; directi
   <span style="color:#444; margin:0 6px;">&#x2502;</span>
   <span class="st-dot st-bad" id="st-radio-dot">&#9679;</span>
   <span id="st-radio-lbl">Radio: not connected</span>
-  <button id="st-disc" style="display:none" onclick="disconnectPort()">Disconnect</button>
-</div>
-
-<!-- Connection bar (hidden when connected) -->
-<div id="conn-bar">
-  <span id="conn-label">&#9888; NOT CONNECTED</span>
-  <select id="port-sel"><option>Loading...</option></select>
-  <button onclick="connectToPort()">Connect</button>
-  <button onclick="disconnectPort()">Disconnect</button>
-  <button onclick="loadPorts()">&#8635; Refresh ports</button>
   <span id="radio-info"></span>
+  <button id="st-refresh" onclick="loadPorts()" title="Refresh COM ports">&#8635;</button>
 </div>
 
 <!-- Canvas: pixel-exact layout from Form1.Designer.cs (727×241) -->
 <div id="canvas-wrap"><div id="canvas">
   <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:56px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
   <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;font-size:21px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
-  <div id="band"     style="left:1px;top:119px;width:100px;height:14px;">---</div>
   <div id="temp-val" style="left:552px;top:212px;width:44px;height:20px;">--&#176;C</div>
   <div id="lev-val"  style="left:593px;top:204px;width:44px;height:39px;">+00<br>dB</div>
 
@@ -283,7 +309,7 @@ input[type=range].vslider { position:absolute; writing-mode:vertical-lr; directi
   <input type="range" class="vslider" id="sl-pwr" min="5" max="100" value="100" style="left:668px;top:15px;width:28px;height:120px;" oninput="sliderChange('sl-pwr',this.value)">
   <div class="sl-val" id="sl-pwr-val" style="left:660px;top:138px;width:45px;height:16px;">100</div>
 
-  <button class="btn" style="left:195px;top:1px;width:88px;height:40px;" onclick="bandStep(1)" oncontextmenu="bandStep(-1);return false;" title="Click=Band up  Right-click=Band down">BAND</button>
+  <button class="btn" style="left:195px;top:1px;width:88px;height:40px;" onclick="bandStep(1)" oncontextmenu="bandStep(-1);return false;" title="Click=Band up  Right-click=Band down"><span id="band" style="font-size:13px;">BAND</span></button>
   <button class="btn" style="left:195px;top:41px;width:44px;height:40px;" onclick="freqStep(-1)">[-]</button>
   <button class="btn" style="left:239px;top:41px;width:44px;height:40px;" onclick="freqStep(1)">[+]</button>
   <button class="btn" style="left:195px;top:81px;width:88px;height:40px;" onclick="sendCmd('SV;')">&lt;===&gt;</button>
@@ -339,6 +365,8 @@ input[type=range].vslider { position:absolute; writing-mode:vertical-lr; directi
     <option value="20000">20 kHz</option>
     <option value="50000">50 kHz</option>
   </select>
+  <select id="port-sel" class="cv-sel" style="left:640px;top:189px;width:85px;height:22px;"><option>Loading...</option></select>
+  <button class="btn" id="btn-connect" style="left:640px;top:218px;width:85px;height:22px;" onclick="toggleConnect()">Connect</button>
 </div></div>
 
 <script>
@@ -372,14 +400,13 @@ function sendCmd(cmd) {
 // ── State → UI ────────────────────────────────────────────────────────────────
 function applyState(s) {
   state = s;
-  document.getElementById('conn-bar').style.display = s.connected ? 'none' : 'flex';
-  document.getElementById('radio-info').textContent  = s.connected ? `${s.radioModel}  @  ${s.comPort}` : '';
   document.getElementById('st-radio-dot').className   = `st-dot ${s.connected ? 'st-ok' : 'st-bad'}`;
   document.getElementById('st-radio-lbl').textContent = s.connected ? `Radio: ${s.radioModel}  \u2014  ${s.comPort}` : 'Radio: not connected';
-  document.getElementById('st-disc').style.display    = s.connected ? '' : 'none';
+  const cb = document.getElementById('btn-connect'); if (cb) cb.textContent = s.connected ? 'Disconnect' : 'Connect';
 
   updateFreqs(s);
-  document.getElementById('band').textContent = bandName(s.mainFocused ? s.mainFreqHz : s.subFreqHz);
+  const bn = bandName(s.mainFocused ? s.mainFreqHz : s.subFreqHz);
+  document.getElementById('band').textContent = bn === '---' ? 'BAND' : bn;
 
   const tv = document.getElementById('temp-val');
   tv.textContent = s.temp; tv.style.color = s.tempColor;
@@ -521,6 +548,7 @@ async function loadPorts() {
 }
 function connectToPort()  { const p=document.getElementById('port-sel').value; if(p&&!p.startsWith('No '))sendCmd('CONNECT:'+p); }
 function disconnectPort() { sendCmd('DISCONNECT'); }
+function toggleConnect()  { if (state.connected) disconnectPort(); else connectToPort(); }
 
 window.onload = () => { loadPorts(); connect(); };
 </script>
