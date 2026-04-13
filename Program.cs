@@ -213,7 +213,7 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 /* Frequency boxes */
 .freq-box {
   position:absolute; background:#000; color:gold;
-  font-family:'Courier New',monospace; font-size:20px; font-weight:bold;
+  font-family:'Courier New',monospace; font-size:26px; font-weight:bold;
   border:2px solid #555; text-align:center; letter-spacing:1px;
   cursor:pointer; display:flex; align-items:center; justify-content:center;
 }
@@ -221,9 +221,9 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 /* Labels / value displays */
 #band     { position:absolute; font-size:10px; font-weight:bold; color:cyan; background:#000; text-align:center; border:1px solid #333; }
 #temp-val { position:absolute; font-size:10px; font-weight:bold; color:cyan; background:#000; text-align:center; }
-#lev-val  { position:absolute; font-family:monospace; font-size:9px; color:limegreen; background:#000; text-align:center; border:1px solid #444; display:flex; align-items:center; justify-content:center; }
-.sl-lbl   { position:absolute; font-size:7pt; color:#aaa; text-align:center; }
-.sl-val   { position:absolute; font-family:monospace; font-size:9px; color:gold; background:#000; text-align:center; border:1px solid #333; display:flex; align-items:center; justify-content:center; }
+#lev-val  { position:absolute; font-family:monospace; font-size:13px; color:limegreen; background:#000; text-align:center; border:1px solid #444; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.4; }
+.sl-lbl   { position:absolute; font-size:7pt; color:#fff; text-align:center; }
+.sl-val   { position:absolute; font-family:monospace; font-size:14px; color:gold; background:#000; text-align:center; border:1px solid #333; display:flex; align-items:center; justify-content:center; }
 
 /* Sliders */
 input[type=range].vslider { position:absolute; writing-mode:vertical-lr; direction:rtl; cursor:pointer; accent-color:#888; }
@@ -258,10 +258,10 @@ input[type=range].vslider { position:absolute; writing-mode:vertical-lr; directi
 <!-- Canvas: pixel-exact layout from Form1.Designer.cs (727×241) -->
 <div id="canvas-wrap"><div id="canvas">
   <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:56px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
-  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;font-size:16px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
+  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;font-size:21px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
   <div id="band"     style="left:1px;top:119px;width:100px;height:14px;">---</div>
   <div id="temp-val" style="left:552px;top:212px;width:44px;height:20px;">--&#176;C</div>
-  <div id="lev-val"  style="left:593px;top:204px;width:44px;height:39px;">+00 dB</div>
+  <div id="lev-val"  style="left:593px;top:204px;width:44px;height:39px;">+00<br>dB</div>
 
   <div class="sl-lbl" style="left:1px;top:111px;width:45px;">MAIN RF</div>
   <input type="range" class="vslider" id="sl-rfgain" min="0" max="255" value="255" style="left:9px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-rfgain',this.value)">
@@ -418,7 +418,7 @@ function applyState(s) {
   document.getElementById('sl-pwr').max = s.maxPower;
 
   const lv = document.getElementById('lev-val');
-  lv.textContent = fmtLev(s.levelShift) + ' dB';
+  lv.innerHTML = fmtLev(s.levelShift) + '<br>dB';
   lv.style.color = s.levelShift < 0 ? 'red' : 'limegreen';
 }
 
