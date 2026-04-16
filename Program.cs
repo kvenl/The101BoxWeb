@@ -51,7 +51,8 @@ app.MapGet("/", () =>
 });
 
 app.MapGet("/api/ports", () =>
-    Results.Json(SerialPort.GetPortNames().OrderBy(p => p, StringComparer.Ordinal)));
+    Results.Json(SerialPort.GetPortNames().OrderBy(p =>
+        int.TryParse(p.Replace("COM", "").Replace("com", ""), out int n) ? n : 999)));
 
 app.MapGet("/api/audiodevices", () =>
     Results.Json(AudioEngine.GetDevices().Select(d => new { d.index, d.name })));
@@ -250,7 +251,7 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 
 /* ── Main canvas (pixel-exact layout from Form1.Designer.cs, 727×241) ── */
 #canvas-wrap { padding:4px; overflow-x:auto; background:#111; }
-#canvas { position:relative; width:727px; height:250px; background:#0d0d0d; }
+#canvas { position:relative; width:840px; height:250px; background:#0d0d0d; }
 
 /* Buttons — DarkGreen / Yellow / White border, matching desktop exactly */
 .btn {
@@ -432,6 +433,11 @@ input[type=range].vslider::-moz-range-thumb {
   </select>
   <select id="port-sel" class="cv-sel" style="left:640px;top:189px;width:85px;height:22px;"><option>Loading...</option></select>
   <button class="btn" id="btn-connect" style="left:640px;top:218px;width:85px;height:22px;" onclick="toggleConnect()">Connect</button>
+
+  <!-- VFO knob -->
+  <canvas id="vfo-knob" width="120" height="120" style="position:absolute;left:715px;top:25px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
+  <div style="position:absolute;left:715px;top:150px;width:120px;text-align:center;font-size:8pt;color:#ff0;font-weight:bold;">VFO TUNE</div>
+  <div style="position:absolute;left:715px;top:165px;width:120px;text-align:center;font-size:7pt;color:#888;">uses step selector</div>
 </div></div>
 
 <!-- Audio bar -->
@@ -699,8 +705,117 @@ function setAudioBtn(on) {
   document.getElementById('audio-lbl').textContent = on ? 'Audio: streaming' : 'Audio: idle';
 }
 
+// ── VFO Knob ──────────────────────────────────────────────────────────────────
+function initKnob() {
+  const el  = document.getElementById('vfo-knob');
+  const ctx = el.getContext('2d');
+  const CX  = el.width / 2, CY = el.height / 2, R = CX - 5;
+  const DEG_PER_STEP = 10;
+  let angle    = 0;
+  let dragging = false;
+  let lastAng  = 0;
+  let accumDeg = 0;
+
+  function draw() {
+    ctx.clearRect(0, 0, el.width, el.height);
+    // outer ring
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI*2);
+    ctx.fillStyle = '#111'; ctx.fill();
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.stroke();
+    // tick marks around ring
+    for (let i = 0; i < 36; i++) {
+      const a  = i * 10 * Math.PI / 180;
+      const r1 = (i % 9 === 0) ? R - 7 : R - 4;
+      ctx.beginPath();
+      ctx.moveTo(CX + Math.sin(a)*r1,     CY - Math.cos(a)*r1);
+      ctx.lineTo(CX + Math.sin(a)*(R-1),  CY - Math.cos(a)*(R-1));
+      ctx.strokeStyle = (i % 9 === 0) ? '#888' : '#333';
+      ctx.lineWidth   = (i % 9 === 0) ? 2 : 1;
+      ctx.stroke();
+    }
+    // knob body with radial gradient
+    const grad = ctx.createRadialGradient(CX-R*0.3, CY-R*0.3, 0, CX, CY, R-8);
+    grad.addColorStop(0, '#666'); grad.addColorStop(1, '#1a1a1a');
+    ctx.beginPath(); ctx.arc(CX, CY, R-8, 0, Math.PI*2);
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
+    // yellow indicator dot
+    const rad = angle * Math.PI / 180;
+    ctx.beginPath();
+    ctx.arc(CX + Math.sin(rad)*(R-18), CY - Math.cos(rad)*(R-18), 5, 0, Math.PI*2);
+    ctx.fillStyle = '#ff0'; ctx.fill();
+    // center cap
+    ctx.beginPath(); ctx.arc(CX, CY, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#333'; ctx.fill();
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+  }
+
+  function evAngle(e) {
+    const rect = el.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left - CX;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top  - CY;
+    return Math.atan2(cx, -cy) * 180 / Math.PI;
+  }
+
+  function tune(steps) {
+    if (steps === 0) return;
+    const step = parseInt(document.getElementById('step').value);
+    const freq = state.mainFocused ? state.mainFreqHz : state.subFreqHz;
+    const nf   = Math.max(0, freq + steps * step);
+    sendCmd(`${state.mainFocused ? 'FA' : 'FB'}${nf.toString().padStart(9,'0')};`);
+  }
+
+  el.addEventListener('mousedown', e => {
+    e.preventDefault(); dragging = true; accumDeg = 0;
+    lastAng = evAngle(e); el.style.cursor = 'grabbing';
+  });
+  el.addEventListener('touchstart', e => {
+    e.preventDefault(); dragging = true; accumDeg = 0; lastAng = evAngle(e);
+  }, { passive:false });
+
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const a = evAngle(e);
+    let delta = a - lastAng;
+    if (delta >  180) delta -= 360;
+    if (delta < -180) delta += 360;
+    lastAng   = a;
+    angle    += delta;
+    accumDeg += delta;
+    draw();
+    const steps = Math.trunc(accumDeg / DEG_PER_STEP);
+    if (steps !== 0) { accumDeg -= steps * DEG_PER_STEP; tune(steps); }
+  });
+  window.addEventListener('touchmove', e => {
+    if (!dragging) return; e.preventDefault();
+    const a = evAngle(e);
+    let delta = a - lastAng;
+    if (delta >  180) delta -= 360;
+    if (delta < -180) delta += 360;
+    lastAng   = a;
+    angle    += delta;
+    accumDeg += delta;
+    draw();
+    const steps = Math.trunc(accumDeg / DEG_PER_STEP);
+    if (steps !== 0) { accumDeg -= steps * DEG_PER_STEP; tune(steps); }
+  }, { passive:false });
+
+  window.addEventListener('mouseup',  () => { dragging = false; el.style.cursor = 'grab'; });
+  window.addEventListener('touchend', () => { dragging = false; });
+
+  // mouse wheel on knob
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    angle += dir * DEG_PER_STEP;
+    draw(); tune(dir);
+  }, { passive:false });
+
+  draw();
+}
+
 window.onload = () => {
-  loadPorts(); connect(); loadAudioDevices(); connectAudioWs();
+  loadPorts(); connect(); loadAudioDevices(); connectAudioWs(); initKnob();
   document.querySelectorAll('input.vslider').forEach(sl => {
     sl.addEventListener('wheel', e => {
       e.preventDefault();
@@ -848,6 +963,7 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
     private readonly object _lock = new();
     private string[] _pollCmds = BuildPollCmds(true);
     private int      _pollIndex;
+    private long     _tuningUntil = 0; // ticks — poll is paused while tuning
 
     // saved for external tuner restore
     private string _savedMode  = "";
@@ -922,6 +1038,9 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
             try
             {
                 if (_port == null || !_port.IsOpen) { await Task.Delay(1000, ct); continue; }
+
+                // pause polling while user is tuning — avoids lock contention
+                if (DateTime.UtcNow.Ticks < _tuningUntil) { await Task.Delay(80, ct); continue; }
 
                 if (_pollIndex == 0)
                     lock (_lock) { try { _port.DiscardInBuffer(); _port.DiscardOutBuffer(); } catch { } }
@@ -1041,6 +1160,22 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
                 SendCommand("MX0;");
                 if (!string.IsNullOrEmpty(_savedMode))  SendCommand(_savedMode  + ";");
                 if (!string.IsNullOrEmpty(_savedPower)) SendCommand("PC" + _savedPower + ";");
+                return;
+            }
+
+            // frequency tuning — update state immediately + pause poll for 300ms
+            if (cmd.StartsWith("FA") || cmd.StartsWith("FB"))
+            {
+                _tuningUntil = DateTime.UtcNow.AddMilliseconds(300).Ticks;
+                SendCommand(cmd);
+                // optimistic state update so display reacts instantly
+                var digits = cmd[2..].TrimEnd(';');
+                if (long.TryParse(digits, out long hz))
+                {
+                    if (cmd.StartsWith("FA")) state.MainFreqHz = hz;
+                    else                      state.SubFreqHz  = hz;
+                    _ = BroadcastStateAsync();
+                }
                 return;
             }
 
