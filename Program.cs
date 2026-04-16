@@ -94,7 +94,28 @@ if (!string.IsNullOrEmpty(comPort))
 else
     AppLog("No COM port specified — select one in browser.");
 
-await app.RunAsync();
+try
+{
+    await app.RunAsync();
+}
+catch (Exception ex)
+{
+    try { Console.CursorVisible = true; Console.Clear(); } catch { }
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine("=== The101BoxWeb failed to start ===");
+    Console.ResetColor();
+    Console.WriteLine(ex.Message);
+    Console.WriteLine();
+    Console.WriteLine("Common causes:");
+    Console.WriteLine($"  - Port {httpPort} is already in use by another application.");
+    Console.WriteLine("  - Insufficient permissions to bind to the network.");
+    Console.WriteLine();
+    Console.WriteLine($"Try running with a different port:  The101BoxWeb.exe --http 5001");
+    Console.WriteLine();
+    Console.WriteLine("Press any key to exit...");
+    try { Console.ReadKey(true); } catch { }
+    return;
+}
 try { Console.CursorVisible = true; } catch { }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -205,7 +226,8 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 }
 .btn:hover  { background:#006400; }
 .btn:active { background:#cc0000; }
-.btn.active { background:#8b0000; }
+.btn.active { background:#8b0000 !important; }
+.btn.active:hover { background:#aa0000 !important; }
 
 #btn-exttune:hover { background:#00008b; }
 
@@ -285,23 +307,23 @@ input[type=range].vslider::-moz-range-thumb {
 <!-- Canvas: pixel-exact layout from Form1.Designer.cs (727×241) -->
 <div id="canvas-wrap"><div id="canvas">
   <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:56px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
-  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;font-size:21px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
+  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
   <div id="temp-val" style="left:552px;top:212px;width:44px;height:20px;">--&#176;C</div>
   <div id="lev-val"  style="left:593px;top:204px;width:44px;height:39px;">+00<br>dB</div>
 
-  <div class="sl-lbl" style="left:1px;top:111px;width:45px;">MAIN RF</div>
+  <div class="sl-lbl" style="left:1px;top:111px;width:45px;">M.RF</div>
   <input type="range" class="vslider" id="sl-rfgain" min="0" max="255" value="255" style="left:9px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-rfgain',this.value)">
   <div class="sl-val" id="sl-rfgain-val" style="left:1px;top:226px;width:45px;height:16px;">100</div>
 
-  <div class="sl-lbl" style="left:48px;top:111px;width:46px;">MAIN VOL</div>
+  <div class="sl-lbl" style="left:48px;top:111px;width:46px;">M.VOL</div>
   <input type="range" class="vslider" id="sl-vol" min="0" max="255" value="0" style="left:56px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-vol',this.value)">
   <div class="sl-val" id="sl-vol-val" style="left:48px;top:226px;width:46px;height:16px;">000</div>
 
-  <div class="sl-lbl" style="left:98px;top:111px;width:45px;">SUB RF</div>
+  <div class="sl-lbl" style="left:98px;top:111px;width:45px;">S.RF</div>
   <input type="range" class="vslider" id="sl-srfgain" min="0" max="255" value="255" style="left:106px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-srfgain',this.value)">
   <div class="sl-val" id="sl-srfgain-val" style="left:98px;top:226px;width:45px;height:16px;">100</div>
 
-  <div class="sl-lbl" style="left:145px;top:111px;width:46px;">SUB VOL</div>
+  <div class="sl-lbl" style="left:145px;top:111px;width:46px;">S.VOL</div>
   <input type="range" class="vslider" id="sl-svol" min="0" max="255" value="0" style="left:153px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-svol',this.value)">
   <div class="sl-val" id="sl-svol-val" style="left:145px;top:226px;width:46px;height:16px;">000</div>
 
@@ -402,7 +424,7 @@ function applyState(s) {
   state = s;
   document.getElementById('st-radio-dot').className   = `st-dot ${s.connected ? 'st-ok' : 'st-bad'}`;
   document.getElementById('st-radio-lbl').textContent = s.connected ? `Radio: ${s.radioModel}  \u2014  ${s.comPort}` : 'Radio: not connected';
-  const cb = document.getElementById('btn-connect'); if (cb) cb.textContent = s.connected ? 'Disconnect' : 'Connect';
+  const cb = document.getElementById('btn-connect'); if (cb) { cb.textContent = s.connected ? 'Disconnect' : 'Connect'; cb.classList.toggle('active', s.connected); }
 
   updateFreqs(s);
   const bn = bandName(s.mainFocused ? s.mainFreqHz : s.subFreqHz);
@@ -550,7 +572,18 @@ function connectToPort()  { const p=document.getElementById('port-sel').value; i
 function disconnectPort() { sendCmd('DISCONNECT'); }
 function toggleConnect()  { if (state.connected) disconnectPort(); else connectToPort(); }
 
-window.onload = () => { loadPorts(); connect(); };
+window.onload = () => {
+  loadPorts(); connect();
+  document.querySelectorAll('input.vslider').forEach(sl => {
+    sl.addEventListener('wheel', e => {
+      e.preventDefault();
+      const step = sl.id === 'sl-pwr' ? 1 : 5;
+      const newVal = Math.min(parseInt(sl.max), Math.max(parseInt(sl.min), parseInt(sl.value) + (e.deltaY < 0 ? step : -step)));
+      sl.value = newVal;
+      sliderChange(sl.id, newVal);
+    }, { passive: false });
+  });
+};
 </script>
 </body>
 </html>

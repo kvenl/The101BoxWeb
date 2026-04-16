@@ -7,7 +7,7 @@
     <AssemblyName>The101BoxWeb</AssemblyName>
     <RootNamespace>The101BoxWeb</RootNamespace>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>false</SelfContained>
+    <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <DebugType>none</DebugType>
     <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
