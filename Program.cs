@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using NAudio.Wave;
 
 
 // The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
@@ -23,6 +24,7 @@ var jsonOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPoli
 var state    = new RadioState();
 var clients  = new ConcurrentDictionary<string, WebSocket>();
 var engine   = new RadioEngine(state, jsonOpts, clients, baudRate);
+var audio    = new AudioEngine();
 
 // ── log ring buffer ───────────────────────────────────────────────────────────
 var logLines = new List<string>();
@@ -31,6 +33,7 @@ void AppLog(string msg) {
     lock (logLock) { logLines.Add($"[{DateTime.Now:HH:mm:ss}] {msg}"); if (logLines.Count > 8) logLines.RemoveAt(0); }
 }
 engine.Log = AppLog;
+audio.Log  = AppLog;
 
 // ── ASP.NET Core minimal API ──────────────────────────────────────────────────
 var builder = WebApplication.CreateSlimBuilder();
@@ -49,6 +52,38 @@ app.MapGet("/", () =>
 
 app.MapGet("/api/ports", () =>
     Results.Json(SerialPort.GetPortNames().OrderBy(p => p, StringComparer.Ordinal)));
+
+app.MapGet("/api/audiodevices", () =>
+    Results.Json(AudioEngine.GetDevices().Select(d => new { d.index, d.name })));
+
+app.Map("/audio/ws", async context =>
+{
+    if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
+    using var ws = await context.WebSockets.AcceptWebSocketAsync();
+    var id = Guid.NewGuid().ToString();
+    audio.AddClient(id, ws);
+    try
+    {
+        // keep the socket alive until the client disconnects
+        var buf = new byte[256];
+        while (ws.State == WebSocketState.Open)
+        {
+            var result = await ws.ReceiveAsync(buf, CancellationToken.None);
+            if (result.MessageType == WebSocketMessageType.Close) break;
+            // handle start/stop commands from browser
+            var cmd = Encoding.UTF8.GetString(buf, 0, result.Count);
+            if (cmd.StartsWith("START:") && int.TryParse(cmd[6..], out int devIdx))
+                audio.Start(devIdx);
+            else if (cmd == "STOP")
+                audio.Stop();
+        }
+    }
+    finally
+    {
+        audio.RemoveClient(id);
+        try { await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None); } catch { }
+    }
+});
 
 app.Map("/ws", async context =>
 {
@@ -76,7 +111,7 @@ if (!string.IsNullOrEmpty(comPort))
 var cts = new CancellationTokenSource();
 engine.Stopping = cts.Token;
 _ = engine.PollLoopAsync(cts.Token);
-app.Lifetime.ApplicationStopping.Register(() => cts.Cancel());
+app.Lifetime.ApplicationStopping.Register(() => { cts.Cancel(); audio.Stop(); });
 
 string _localIp = GetLocalIp();
 try { Console.CursorVisible = false; Console.Clear(); } catch { }
@@ -289,6 +324,14 @@ input[type=range].vslider::-moz-range-thumb {
 
 /* Step select inside canvas */
 .cv-sel { position:absolute; background:#006400; color:#ff0; border:1px solid #fff; font-family:Verdana,sans-serif; font-size:7pt; font-weight:bold; }
+
+/* Audio bar */
+#audio-bar { display:flex; align-items:center; gap:8px; padding:4px 10px; background:#0d0d0d; border-top:1px solid #222; font-size:11px; }
+#audio-bar select { background:#222; color:#ccc; border:1px solid #555; font-size:11px; padding:1px 4px; max-width:260px; }
+#btn-audio-refresh { background:#333; color:#ccc; border:1px solid #555; padding:2px 6px; cursor:pointer; font-size:13px; }
+#btn-audio-refresh:hover { background:#555; }
+#btn-audio { background:#006400; color:#ff0; border:1px solid #fff; padding:2px 10px; cursor:pointer; font-size:11px; font-weight:bold; }
+#btn-audio:hover { background:#008800; }
 </style>
 </head>
 <body>
@@ -390,6 +433,17 @@ input[type=range].vslider::-moz-range-thumb {
   <select id="port-sel" class="cv-sel" style="left:640px;top:189px;width:85px;height:22px;"><option>Loading...</option></select>
   <button class="btn" id="btn-connect" style="left:640px;top:218px;width:85px;height:22px;" onclick="toggleConnect()">Connect</button>
 </div></div>
+
+<!-- Audio bar -->
+<div id="audio-bar">
+  <span class="st-dot st-warn" id="audio-dot">&#9679;</span>
+  <span id="audio-lbl">Audio: idle</span>
+  <span style="color:#444; margin:0 8px;">&#x2502;</span>
+  <label style="color:#aaa;font-size:11px;">Input device:</label>
+  <select id="audio-dev-sel"></select>
+  <button id="btn-audio-refresh" onclick="loadAudioDevices()" title="Refresh devices">&#8635;</button>
+  <button id="btn-audio" onclick="toggleAudio()">&#9654; Start Audio</button>
+</div>
 
 <script>
 let ws = null;
@@ -572,8 +626,81 @@ function connectToPort()  { const p=document.getElementById('port-sel').value; i
 function disconnectPort() { sendCmd('DISCONNECT'); }
 function toggleConnect()  { if (state.connected) disconnectPort(); else connectToPort(); }
 
+// ── Audio ─────────────────────────────────────────────────────────────────────
+let audioWs       = null;
+let audioCtx      = null;
+let audioRunning  = false;
+let nextPlayTime  = 0;
+const SAMPLE_RATE = 16000;
+
+async function loadAudioDevices() {
+  try {
+    const r = await fetch('/api/audiodevices');
+    const devs = await r.json();
+    const sel = document.getElementById('audio-dev-sel');
+    sel.innerHTML = devs.length
+      ? devs.map(d => `<option value="${d.index}">${d.name}</option>`).join('')
+      : '<option>No devices found</option>';
+  } catch(e) { console.error(e); }
+}
+
+function connectAudioWs() {
+  audioWs = new WebSocket(`ws://${location.host}/audio/ws`);
+  audioWs.binaryType = 'arraybuffer';
+  audioWs.onmessage  = e => { if (audioRunning) scheduleAudio(e.data); };
+  audioWs.onclose    = () => { if (audioRunning) setTimeout(connectAudioWs, 2000); };
+  audioWs.onerror    = () => audioWs.close();
+}
+
+function scheduleAudio(arrayBuffer) {
+  if (!audioCtx) return;
+  const int16 = new Int16Array(arrayBuffer);
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+
+  const buf = audioCtx.createBuffer(1, float32.length, SAMPLE_RATE);
+  buf.copyToChannel(float32, 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+
+  const now = audioCtx.currentTime;
+  if (nextPlayTime < now) nextPlayTime = now + 0.05; // small initial buffer
+  src.start(nextPlayTime);
+  nextPlayTime += buf.duration;
+}
+
+function toggleAudio() {
+  if (!audioRunning) {
+    audioCtx     = new AudioContext({ sampleRate: SAMPLE_RATE });
+    nextPlayTime = 0;
+    audioRunning = true;
+    const devIdx = document.getElementById('audio-dev-sel').value;
+    setAudioBtn(true);
+    if (!audioWs || audioWs.readyState !== WebSocket.OPEN) {
+      connectAudioWs();
+      audioWs.onopen = () => audioWs.send('START:' + devIdx);
+    } else {
+      audioWs.send('START:' + devIdx);
+    }
+  } else {
+    audioRunning = false;
+    setAudioBtn(false);
+    if (audioWs && audioWs.readyState === WebSocket.OPEN) audioWs.send('STOP');
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  }
+}
+
+function setAudioBtn(on) {
+  const btn = document.getElementById('btn-audio');
+  btn.textContent  = on ? '\u23F9 Stop Audio' : '\u25B6 Start Audio';
+  btn.style.background = on ? '#cc0000' : '';
+  document.getElementById('audio-dot').className  = `st-dot ${on ? 'st-ok' : 'st-warn'}`;
+  document.getElementById('audio-lbl').textContent = on ? 'Audio: streaming' : 'Audio: idle';
+}
+
 window.onload = () => {
-  loadPorts(); connect();
+  loadPorts(); connect(); loadAudioDevices(); connectAudioWs();
   document.querySelectorAll('input.vslider').forEach(sl => {
     sl.addEventListener('wheel', e => {
       e.preventDefault();
@@ -589,6 +716,90 @@ window.onload = () => {
 </html>
 """;
 } // end Resources class
+
+// ── AudioEngine ───────────────────────────────────────────────────────────────
+class AudioEngine
+{
+    private WaveInEvent?   _waveIn;
+    private readonly ConcurrentDictionary<string, WebSocket> _audioClients = new();
+    private bool           _running;
+    public  Action<string>? Log { get; set; }
+
+    // ── device enumeration ────────────────────────────────────────────────────
+    public static List<(int index, string name)> GetDevices()
+    {
+        var list = new List<(int, string)>();
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+        {
+            var cap = WaveInEvent.GetCapabilities(i);
+            list.Add((i, cap.ProductName));
+        }
+        return list;
+    }
+
+    // ── start capture ─────────────────────────────────────────────────────────
+    public void Start(int deviceIndex)
+    {
+        Stop();
+        try
+        {
+            _waveIn = new WaveInEvent
+            {
+                DeviceNumber       = deviceIndex,
+                WaveFormat         = new WaveFormat(16000, 16, 1), // 16 kHz, 16-bit, mono
+                BufferMilliseconds = 100
+            };
+            _waveIn.DataAvailable    += OnDataAvailable;
+            _waveIn.RecordingStopped += (s, e) => { if (e.Exception != null) Log?.Invoke($"[Audio] Recording stopped: {e.Exception.Message}"); };
+            _waveIn.StartRecording();
+            _running = true;
+            Log?.Invoke($"[Audio] Started capture from device {deviceIndex}: {WaveInEvent.GetCapabilities(deviceIndex).ProductName}");
+        }
+        catch (Exception ex)
+        {
+            Log?.Invoke($"[Audio] Start failed: {ex.Message}");
+        }
+    }
+
+    // ── stop capture ──────────────────────────────────────────────────────────
+    public void Stop()
+    {
+        if (_waveIn == null) return;
+        try { _waveIn.StopRecording(); } catch { }
+        _waveIn.DataAvailable -= OnDataAvailable;
+        _waveIn.Dispose();
+        _waveIn   = null;
+        _running  = false;
+        Log?.Invoke("[Audio] Capture stopped");
+    }
+
+    public bool IsRunning => _running;
+
+    // ── WebSocket client management ───────────────────────────────────────────
+    public void AddClient(string id, WebSocket ws)    => _audioClients[id] = ws;
+    public void RemoveClient(string id)               => _audioClients.TryRemove(id, out _);
+
+    // ── broadcast raw PCM to all audio listeners ──────────────────────────────
+    private void OnDataAvailable(object? sender, WaveInEventArgs e)
+    {
+        if (e.BytesRecorded == 0 || _audioClients.IsEmpty) return;
+        var seg  = new ArraySegment<byte>(e.Buffer, 0, e.BytesRecorded);
+        var dead = new List<string>();
+        foreach (var (id, ws) in _audioClients)
+        {
+            try
+            {
+                if (ws.State == WebSocketState.Open)
+                    ws.SendAsync(seg, WebSocketMessageType.Binary, true, CancellationToken.None)
+                      .GetAwaiter().GetResult();
+                else
+                    dead.Add(id);
+            }
+            catch { dead.Add(id); }
+        }
+        foreach (var id in dead) _audioClients.TryRemove(id, out _);
+    }
+}
 
 // ── RadioState ────────────────────────────────────────────────────────────────
 class RadioState
