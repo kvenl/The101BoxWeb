@@ -352,11 +352,11 @@ input[type=range].vslider::-moz-range-thumb {
   <!-- Width / Shift sliders (x=98 / x=145, matching Design101) -->
   <div class="sl-lbl" style="left:98px;top:111px;width:45px;">WIDTH</div>
   <input type="range" class="vslider" id="sl-width" min="1" max="23" value="20" style="left:106px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-width',this.value)">
-  <div class="sl-val" id="sl-width-val" style="left:98px;top:226px;width:45px;height:16px;">---</div>
+  <div class="sl-val" id="sl-width-val" style="left:98px;top:226px;width:45px;height:16px;cursor:pointer;" title="Double-click to reset" ondblclick="resetWidth()">---</div>
 
   <div class="sl-lbl" style="left:145px;top:111px;width:45px;">SHIFT</div>
   <input type="range" class="vslider" id="sl-shift" min="-60" max="60" value="0" style="left:153px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-shift',this.value)">
-  <div class="sl-val" id="sl-shift-val" style="left:145px;top:226px;width:45px;height:16px;">0</div>
+  <div class="sl-val" id="sl-shift-val" style="left:145px;top:226px;width:45px;height:16px;cursor:pointer;" title="Double-click to reset" ondblclick="resetShift()">0</div>
 
   <!-- Col1: VFO / mode -->
   <button class="btn" style="left:195px;top:1px;width:88px;height:40px;" onclick="bandStep(1)" oncontextmenu="bandStep(-1);return false;" title="Click=Band up  Right-click=Band down"><span id="band" style="font-size:13px;">BAND</span></button>
@@ -382,9 +382,9 @@ input[type=range].vslider::-moz-range-thumb {
   <button class="btn" id="btn-ipo"  style="left:373px;top:1px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(0))">IPO</button>
   <button class="btn" id="btn-amp1" style="left:373px;top:41px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(1))">AMP1</button>
   <button class="btn" id="btn-amp2" style="left:373px;top:81px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(2))">AMP2</button>
-  <canvas id="vfo-knob" width="84" height="84" style="position:absolute;left:375px;top:130px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
-  <div style="position:absolute;left:373px;top:218px;width:88px;text-align:center;font-size:8pt;color:#ff0;font-weight:bold;">VFO TUNE</div>
-  <div style="position:absolute;left:373px;top:231px;width:88px;text-align:center;font-size:7pt;color:#888;">uses step</div>
+  <canvas id="vfo-knob" width="84" height="84" style="position:absolute;left:420px;top:130px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
+  <div style="position:absolute;left:418px;top:218px;width:88px;text-align:center;font-size:8pt;color:#ff0;font-weight:bold;">VFO TUNE</div>
+  <div style="position:absolute;left:418px;top:231px;width:88px;text-align:center;font-size:7pt;color:#888;">uses step</div>
 
   <!-- Col4: ATT / NR / BC — matching Design101 x=462/505 -->
   <button class="btn" id="btn-att0"  style="left:462px;top:1px;width:44px;height:40px;" onclick="sendCmd(attCmd(0))">ATT<br>OFF</button>
@@ -506,11 +506,11 @@ const shTable = [
   [1650,400],[1800,450],[1950,500],[2100,600],[2200,800],[2300,1200],[2400,1400],[2500,1700],
   [2600,2000],[2700,2400],[2800,3000],[2900,3200],[3000,3500],[3200,4000],[3500,3500],[4000,4000]];
 function shBwDisplay(pos, mode) {
-  if (mode==='5') return '9000 Hz';
-  if (mode==='4') return '16000 Hz';
+  if (mode==='5') return '9000';
+  if (mode==='4') return '16000';
   if (pos<1 || pos>=shTable.length) return '---';
   const cwDig = mode==='3' || mode==='C';
-  return (cwDig ? shTable[pos][1] : shTable[pos][0]) + ' Hz';
+  return String(cwDig ? shTable[pos][1] : shTable[pos][0]);
 }
 function isShiftDisplay(steps) {
   const hz=steps*20;
@@ -540,6 +540,16 @@ function freqStep(dir) {
   sendCmd(`${state.mainFocused?'FA':'FB'}${nf.toString().padStart(9,'0')};`);
 }
 function bandStep(dir) { sendCmd(dir>0?`BU${vfo()};`:`BD${vfo()};`); }
+function resetWidth() {
+  const mode = state.mainFocused ? state.mainMode : state.subMode;
+  const pos  = (mode==='3' || mode==='C') ? 11 : 20;
+  document.getElementById('sl-width').value = pos;
+  sliderChange('sl-width', pos);
+}
+function resetShift() {
+  document.getElementById('sl-shift').value = 0;
+  sliderChange('sl-shift', 0);
+}
 
 // Sliders with 150 ms debounce
 function sliderChange(id, raw) {
