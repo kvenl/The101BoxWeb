@@ -9,8 +9,8 @@ using NAudio.Wave;
 
 
 // The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
-// version 0.3 by Kees, ON9KVE
-// date : 13 apr 2026
+// version 0.9 by Kees, ON9KVE (based on The101Box 3.01)
+// date : 19 apr 2026
 
 
 // ── parse command-line arguments ─────────────────────────────────────────────
@@ -195,7 +195,7 @@ static void DrawStatus(RadioState st, ConcurrentDictionary<string, WebSocket> cl
         L($"  Radio   :  {st.RadioModel}  @  {st.ComPort}  ({baud} baud)");
         L($"  Main VFO:  {StFmt(st.MainFreqHz)}  {StMode(st.MainMode)}{(st.MainFocused ? "  ◄" : "")}");
         L($"  Sub VFO :  {StFmt(st.SubFreqHz)}  {StMode(st.SubMode)}{(!st.MainFocused ? "  ◄" : "")}");
-        L($"  Volume  :  {StVal(st.Volume),3}   RF Gain: {StVal(st.RfGain),3}   Power: {st.Power}W");
+        L($"  Width   :  {st.WidthPos:D2}   Shift: {(st.ShiftSteps * 20):+0;-0;0} Hz");
     }
     else
     {
@@ -251,7 +251,7 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 
 /* ── Main canvas (pixel-exact layout from Form1.Designer.cs, 727×241) ── */
 #canvas-wrap { padding:4px; overflow-x:auto; background:#111; }
-#canvas { position:relative; width:840px; height:250px; background:#0d0d0d; }
+#canvas { position:relative; width:551px; height:244px; background:#0d0d0d; }
 
 /* Buttons — DarkGreen / Yellow / White border, matching desktop exactly */
 .btn {
@@ -265,9 +265,7 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 .btn.active { background:#8b0000 !important; }
 .btn.active:hover { background:#aa0000 !important; }
 
-#btn-exttune:hover { background:#00008b; }
-
-#btn-rx1 { background:silver; color:#00008b; }
+#btn-rx1
 #btn-rx1.active { background:#8b0000; color:#ff0; }
 #btn-rx2 { background:#00008b; color:silver; }
 #btn-rx2.active { background:#8b0000; color:#ff0; }
@@ -306,22 +304,6 @@ input[type=range].vslider::-moz-range-thumb {
   width:26px; height:10px; border-radius:2px;
   border:1px solid #000044; cursor:pointer; background:#00008b;
 }
-/* SUB sliders: dark blue body, light groove, silver knob */
-#sl-srfgain, #sl-svol {
-  background-color:#00008b;
-  background-image:repeating-linear-gradient(to bottom,rgba(180,180,220,.6) 0,rgba(180,180,220,.6) 1px,transparent 1px,transparent 10px);
-  border-color:#000055;
-}
-#sl-srfgain::-webkit-slider-runnable-track, #sl-svol::-webkit-slider-runnable-track { background:#8888cc; }
-#sl-srfgain::-moz-range-track,              #sl-svol::-moz-range-track             { background:#8888cc; }
-#sl-srfgain::-webkit-slider-thumb, #sl-svol::-webkit-slider-thumb { background:silver; border-color:#888; }
-#sl-srfgain::-moz-range-thumb,     #sl-svol::-moz-range-thumb    { background:silver; border-color:#888; }
-/* POWER slider: dark red body, red knob */
-#sl-pwr { background-color:#441111; background-image:repeating-linear-gradient(to bottom,rgba(180,130,130,.6) 0,rgba(180,130,130,.6) 1px,transparent 1px,transparent 10px); border-color:#220000; }
-#sl-pwr::-webkit-slider-runnable-track { background:#882222; }
-#sl-pwr::-moz-range-track             { background:#882222; }
-#sl-pwr::-webkit-slider-thumb { background:#cc0000; border-color:#880000; }
-#sl-pwr::-moz-range-thumb     { background:#cc0000; border-color:#880000; }
 
 /* Step select inside canvas */
 .cv-sel { position:absolute; background:#006400; color:#ff0; border:1px solid #fff; font-family:Verdana,sans-serif; font-size:7pt; font-weight:bold; }
@@ -348,33 +330,35 @@ input[type=range].vslider::-moz-range-thumb {
   <button id="st-refresh" onclick="loadPorts()" title="Refresh COM ports">&#8635;</button>
 </div>
 
-<!-- Canvas: pixel-exact layout from Form1.Designer.cs (727×241) -->
+<!-- Canvas: desktop layout matching Design101 (551×241) -->
 <div id="canvas-wrap"><div id="canvas">
-  <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:56px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
-  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:56px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
-  <div id="temp-val" style="left:552px;top:212px;width:44px;height:20px;">--&#176;C</div>
-  <div id="lev-val"  style="left:593px;top:204px;width:44px;height:39px;">+00<br>dB</div>
+  <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:54px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
+  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:46px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
+  <div id="temp-val" style="left:29px;top:142px;width:44px;height:20px;">--&#176;C</div>
 
-  <div class="sl-lbl" style="left:1px;top:111px;width:45px;">M.RF</div>
-  <input type="range" class="vslider" id="sl-rfgain" min="0" max="255" value="255" style="left:9px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-rfgain',this.value)">
-  <div class="sl-val" id="sl-rfgain-val" style="left:1px;top:226px;width:45px;height:16px;">100</div>
+  <!-- Left: step, port, connect -->
+  <select id="step" class="cv-sel" style="left:6px;top:111px;width:86px;height:22px;">
+    <option value="100">100 Hz</option>
+    <option value="500">500 Hz</option>
+    <option value="1000" selected>1 kHz</option>
+    <option value="5000">5 kHz</option>
+    <option value="9000">9 kHz</option>
+    <option value="20000">20 kHz</option>
+    <option value="50000">50 kHz</option>
+  </select>
+  <select id="port-sel" class="cv-sel" style="left:6px;top:173px;width:85px;height:22px;"><option>Loading...</option></select>
+  <button class="btn" id="btn-connect" style="left:7px;top:201px;width:85px;height:22px;" onclick="toggleConnect()">Connect</button>
 
-  <div class="sl-lbl" style="left:48px;top:111px;width:46px;">M.VOL</div>
-  <input type="range" class="vslider" id="sl-vol" min="0" max="255" value="0" style="left:56px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-vol',this.value)">
-  <div class="sl-val" id="sl-vol-val" style="left:48px;top:226px;width:46px;height:16px;">000</div>
+  <!-- Width / Shift sliders (x=98 / x=145, matching Design101) -->
+  <div class="sl-lbl" style="left:98px;top:111px;width:45px;">WIDTH</div>
+  <input type="range" class="vslider" id="sl-width" min="1" max="23" value="20" style="left:106px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-width',this.value)">
+  <div class="sl-val" id="sl-width-val" style="left:98px;top:226px;width:45px;height:16px;">---</div>
 
-  <div class="sl-lbl" style="left:98px;top:111px;width:45px;">S.RF</div>
-  <input type="range" class="vslider" id="sl-srfgain" min="0" max="255" value="255" style="left:106px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-srfgain',this.value)">
-  <div class="sl-val" id="sl-srfgain-val" style="left:98px;top:226px;width:45px;height:16px;">100</div>
+  <div class="sl-lbl" style="left:145px;top:111px;width:45px;">SHIFT</div>
+  <input type="range" class="vslider" id="sl-shift" min="-60" max="60" value="0" style="left:153px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-shift',this.value)">
+  <div class="sl-val" id="sl-shift-val" style="left:145px;top:226px;width:45px;height:16px;">0</div>
 
-  <div class="sl-lbl" style="left:145px;top:111px;width:46px;">S.VOL</div>
-  <input type="range" class="vslider" id="sl-svol" min="0" max="255" value="0" style="left:153px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-svol',this.value)">
-  <div class="sl-val" id="sl-svol-val" style="left:145px;top:226px;width:46px;height:16px;">000</div>
-
-  <div class="sl-lbl" style="left:660px;top:4px;width:45px;">POWER</div>
-  <input type="range" class="vslider" id="sl-pwr" min="5" max="100" value="100" style="left:668px;top:15px;width:28px;height:120px;" oninput="sliderChange('sl-pwr',this.value)">
-  <div class="sl-val" id="sl-pwr-val" style="left:660px;top:138px;width:45px;height:16px;">100</div>
-
+  <!-- Col1: VFO / mode -->
   <button class="btn" style="left:195px;top:1px;width:88px;height:40px;" onclick="bandStep(1)" oncontextmenu="bandStep(-1);return false;" title="Click=Band up  Right-click=Band down"><span id="band" style="font-size:13px;">BAND</span></button>
   <button class="btn" style="left:195px;top:41px;width:44px;height:40px;" onclick="freqStep(-1)">[-]</button>
   <button class="btn" style="left:239px;top:41px;width:44px;height:40px;" onclick="freqStep(1)">[+]</button>
@@ -386,58 +370,29 @@ input[type=range].vslider::-moz-range-thumb {
   <button class="btn" id="btn-cw"  style="left:195px;top:201px;width:44px;height:40px;" onclick="sendCmd(modeCmd('3'))">CW</button>
   <button class="btn" id="btn-dig" style="left:239px;top:201px;width:44px;height:40px;" onclick="sendCmd(modeCmd('C'))">DIG</button>
 
+  <!-- Col2: ANT / RX -->
   <button class="btn" id="btn-ant1"  style="left:284px;top:1px;width:88px;height:40px;" onclick="sendCmd(antCmd(1))">ANT1</button>
   <button class="btn" id="btn-ant2"  style="left:284px;top:41px;width:88px;height:40px;" onclick="sendCmd(antCmd(2))">ANT2</button>
   <button class="btn" id="btn-ant3"  style="left:284px;top:81px;width:88px;height:40px;" onclick="sendCmd(antCmd(3))">ANT3/RX</button>
-  <button class="btn" id="btn-rfsql" style="left:284px;top:121px;width:88px;height:40px;" onclick="rfSqlCmd()">RF/SQL<br>MAIN</button>
-  <button class="btn" id="btn-rx1"   style="left:284px;top:161px;width:88px;height:40px;" onclick="rxCmd('rx1')" oncontextmenu="sendCmd('MUTEBOTH');return false;" title="Click=toggle MAIN RX  Right-click=mute/unmute both">MAIN<br>RX</button>
-  <button class="btn" id="btn-rx2"   style="left:284px;top:201px;width:87px;height:40px;" onclick="rxCmd('rx2')" oncontextmenu="sendCmd('MUTEBOTH');return false;" title="Click=toggle SUB RX  Right-click=mute/unmute both">SUB<br>RX</button>
+  <button class="btn" id="btn-rfsql" style="left:284px;top:122px;width:88px;height:40px;" onclick="rfSqlCmd()">RF/SQL<br>MAIN</button>
+  <button class="btn" id="btn-rx1"   style="left:284px;top:161px;width:88px;height:40px;" onclick="rxCmd('rx1')" title="Toggle MAIN RX">MAIN<br>RX</button>
+  <button class="btn" id="btn-rx2"   style="left:284px;top:201px;width:87px;height:40px;" onclick="rxCmd('rx2')" title="Toggle SUB RX">SUB<br>RX</button>
 
-  <button class="btn" id="btn-ipo"    style="left:373px;top:1px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(0))">IPO</button>
-  <button class="btn" id="btn-amp1"   style="left:373px;top:41px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(1))">AMP1</button>
-  <button class="btn" id="btn-amp2"   style="left:373px;top:81px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(2))">AMP2</button>
-  <button class="btn" id="btn-cursor" style="left:373px;top:121px;width:88px;height:40px;" onclick="scopeCmd('cursor')">CURSOR</button>
-  <button class="btn" id="btn-center" style="left:373px;top:161px;width:88px;height:40px;" onclick="scopeCmd('center')">CENTER</button>
-  <button class="btn" id="btn-fix"    style="left:373px;top:201px;width:88px;height:40px;" onclick="scopeCmd('fix')">FIX</button>
+  <!-- Col3: IPO / AMP — VFO knob fills empty rows 4-6 -->
+  <button class="btn" id="btn-ipo"  style="left:373px;top:1px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(0))">IPO</button>
+  <button class="btn" id="btn-amp1" style="left:373px;top:41px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(1))">AMP1</button>
+  <button class="btn" id="btn-amp2" style="left:373px;top:81px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(2))">AMP2</button>
+  <canvas id="vfo-knob" width="84" height="84" style="position:absolute;left:375px;top:130px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
+  <div style="position:absolute;left:373px;top:218px;width:88px;text-align:center;font-size:8pt;color:#ff0;font-weight:bold;">VFO TUNE</div>
+  <div style="position:absolute;left:373px;top:231px;width:88px;text-align:center;font-size:7pt;color:#888;">uses step</div>
 
+  <!-- Col4: ATT / NR / BC — matching Design101 x=462/505 -->
   <button class="btn" id="btn-att0"  style="left:462px;top:1px;width:44px;height:40px;" onclick="sendCmd(attCmd(0))">ATT<br>OFF</button>
   <button class="btn" id="btn-att12" style="left:462px;top:41px;width:44px;height:40px;" onclick="sendCmd(attCmd(2))">-12<br>dB</button>
   <button class="btn" id="btn-nr"    style="left:462px;top:81px;width:44px;height:40px;" onclick="nrCmd()">NR</button>
-  <button class="btn" id="btn-ssb5"  style="left:462px;top:121px;width:44px;height:40px;" onclick="ssbCmd(5)">20 k</button>
-  <button class="btn" id="btn-ssb1"  style="left:462px;top:161px;width:44px;height:40px;" onclick="ssbCmd(1)">100</button>
-  <button class="btn" id="btn-ssb3"  style="left:462px;top:201px;width:44px;height:40px;" onclick="ssbCmd(3)">500</button>
-
   <button class="btn" id="btn-att6"  style="left:505px;top:1px;width:44px;height:40px;" onclick="sendCmd(attCmd(1))">-6<br>dB</button>
   <button class="btn" id="btn-att18" style="left:505px;top:41px;width:44px;height:40px;" onclick="sendCmd(attCmd(3))">-18<br>dB</button>
   <button class="btn" id="btn-dnf"   style="left:505px;top:81px;width:44px;height:40px;" onclick="dnfCmd()">BC</button>
-  <button class="btn" id="btn-ssb6"  style="left:505px;top:121px;width:44px;height:40px;" onclick="ssbCmd(6)">50 k</button>
-  <button class="btn" id="btn-ssb2"  style="left:505px;top:161px;width:44px;height:40px;" onclick="ssbCmd(2)">200</button>
-  <button class="btn" id="btn-ssb4"  style="left:505px;top:201px;width:44px;height:40px;" onclick="ssbCmd(4)">1 M</button>
-
-  <button class="btn" id="btn-inttune"   style="left:550px;top:1px;width:88px;height:40px;" onclick="sendCmd('AC001;');sendCmd('AC002;')">Int Tuner</button>
-  <button class="btn" id="btn-itune-on"  style="left:550px;top:41px;width:44px;height:40px;" onclick="sendCmd('AC001;')">On</button>
-  <button class="btn" id="btn-itune-off" style="left:594px;top:41px;width:44px;height:40px;" onclick="sendCmd('AC000;')">Off</button>
-  <button class="btn" id="btn-exttune"   style="left:550px;top:81px;width:88px;height:40px;" onmousedown="extTuneDown()" onmouseup="extTuneUp()" ontouchstart="extTuneDown();return false;" ontouchend="extTuneUp()">External<br>Tuner</button>
-  <button class="btn" style="left:550px;top:121px;width:88px;height:40px;" onclick="sendCmd('LEVRESET')">RESET<br>LEVEL</button>
-  <button class="btn" style="left:550px;top:161px;width:44px;height:40px;" onclick="sendCmd('LEV-')">[-]</button>
-  <button class="btn" style="left:594px;top:161px;width:44px;height:40px;" onclick="sendCmd('LEV+')">[+]</button>
-
-  <select id="step" class="cv-sel" style="left:640px;top:161px;width:87px;height:22px;">
-    <option value="100">100 Hz</option>
-    <option value="500">500 Hz</option>
-    <option value="1000" selected>1 kHz</option>
-    <option value="5000">5 kHz</option>
-    <option value="9000">9 kHz</option>
-    <option value="20000">20 kHz</option>
-    <option value="50000">50 kHz</option>
-  </select>
-  <select id="port-sel" class="cv-sel" style="left:640px;top:189px;width:85px;height:22px;"><option>Loading...</option></select>
-  <button class="btn" id="btn-connect" style="left:640px;top:218px;width:85px;height:22px;" onclick="toggleConnect()">Connect</button>
-
-  <!-- VFO knob -->
-  <canvas id="vfo-knob" width="120" height="120" style="position:absolute;left:715px;top:25px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
-  <div style="position:absolute;left:715px;top:150px;width:120px;text-align:center;font-size:8pt;color:#ff0;font-weight:bold;">VFO TUNE</div>
-  <div style="position:absolute;left:715px;top:165px;width:120px;text-align:center;font-size:7pt;color:#888;">uses step selector</div>
 </div></div>
 
 <!-- Audio bar -->
@@ -454,12 +409,11 @@ input[type=range].vslider::-moz-range-thumb {
 <script>
 let ws = null;
 let state = { connected:false, mainFocused:true, rx1Active:false, rx2Active:false,
-  nrOn:false, dnfOn:false, rfSqlOn:false, iTuneOn:false,
+  nrOn:false, dnfOn:false, rfSqlOn:false,
   mainFreqHz:0, subFreqHz:0, mainMode:'2', subMode:'2',
   mainAnt:1, subAnt:1, mainIpo:0, subIpo:0, mainAtt:0, subAtt:0,
-  rfGain:255, subRfGain:255, volume:0, subVolume:0, power:100,
-  scopeMode:'center', dspSpan:'SSB1', levelShift:0,
-  temp:'--\u00b0C', tempColor:'cyan', radioModel:'FTDX101D', maxPower:100 };
+  widthPos:20, shiftSteps:0,
+  temp:'--\u00b0C', tempColor:'cyan', radioModel:'FTDX101D' };
 const timers = {};
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -500,35 +454,20 @@ function applyState(s) {
   setA('btn-fm',   s.mainMode==='4');
   setA('btn-dig',  s.mainMode==='C');
 
-  setA('btn-center', s.scopeMode==='center');
-  setA('btn-cursor', s.scopeMode==='cursor');
-  setA('btn-fix',    s.scopeMode==='fix');
-
-  setA('btn-ssb1', s.dspSpan==='SSB1'); setA('btn-ssb2', s.dspSpan==='SSB2');
-  setA('btn-ssb3', s.dspSpan==='SSB3'); setA('btn-ssb4', s.dspSpan==='SSB4');
-  setA('btn-ssb5', s.dspSpan==='SSB5'); setA('btn-ssb6', s.dspSpan==='SSB6');
-
   setA('btn-ant1', s.mainAnt===1); setA('btn-ant2', s.mainAnt===2); setA('btn-ant3', s.mainAnt===3);
   setA('btn-ipo',  s.mainIpo===0); setA('btn-amp1', s.mainIpo===1); setA('btn-amp2', s.mainIpo===2);
   setA('btn-att0', s.mainAtt===0); setA('btn-att6',  s.mainAtt===1);
   setA('btn-att12',s.mainAtt===2); setA('btn-att18', s.mainAtt===3);
 
-  setA('btn-rx1',      s.rx1Active);  setA('btn-rx2',       s.rx2Active);
-  setA('btn-nr',       s.nrOn);       setA('btn-dnf',       s.dnfOn);
-  setA('btn-rfsql',    s.rfSqlOn);
-  setA('btn-itune-on', s.iTuneOn);    setA('btn-itune-off', !s.iTuneOn);
+  setA('btn-rx1',   s.rx1Active); setA('btn-rx2', s.rx2Active);
+  setA('btn-nr',    s.nrOn);      setA('btn-dnf', s.dnfOn);
+  setA('btn-rfsql', s.rfSqlOn);
   document.getElementById('btn-rfsql').innerHTML = s.rfSqlOn ? 'SQUELCH<br>MAIN' : 'RF/SQL<br>MAIN';
 
-  setSl('sl-rfgain',  s.rfGain,    toDisp(s.rfGain));
-  setSl('sl-vol',     s.volume,    toDisp(s.volume));
-  setSl('sl-pwr',     s.power,     s.power.toString().padStart(3,'0'));
-  setSl('sl-srfgain', s.subRfGain, toDisp(s.subRfGain));
-  setSl('sl-svol',    s.subVolume, toDisp(s.subVolume));
-  document.getElementById('sl-pwr').max = s.maxPower;
-
-  const lv = document.getElementById('lev-val');
-  lv.innerHTML = fmtLev(s.levelShift) + '<br>dB';
-  lv.style.color = s.levelShift < 0 ? 'red' : 'limegreen';
+  const mode = s.mainFocused ? s.mainMode : s.subMode;
+  setSl('sl-width', s.widthPos,   shBwDisplay(s.widthPos, mode));
+  setSl('sl-shift', s.shiftSteps, isShiftDisplay(s.shiftSteps));
+  document.getElementById('sl-shift-val').style.color = s.shiftSteps !== 0 ? 'red' : 'gold';
 }
 
 function updateFreqs(s) {
@@ -554,8 +493,6 @@ function fmtFreq(hz) {
   const mhz=Math.floor(hz/1000000), khz=Math.floor((hz%1000000)/1000), rest=hz%1000;
   return `${mhz.toString().padStart(2,' ')}.${khz.toString().padStart(3,'0')}.${rest.toString().padStart(3,'0')}`;
 }
-function toDisp(v) { return Math.round(v/255*100).toString().padStart(3,'0'); }
-function fmtLev(v) { return (v>=0?'+':'-') + Math.abs(v).toFixed(1).padStart(4,'0'); }
 function bandName(hz) {
   if(hz>=1810000&&hz<1900000)  return '160m'; if(hz>=3500000&&hz<3800000)  return '80m';
   if(hz>=5350000&&hz<5367000)  return '60m';  if(hz>=7000000&&hz<7200000)  return '40m';
@@ -564,24 +501,29 @@ function bandName(hz) {
   if(hz>=24890000&&hz<24990000)return '12m';  if(hz>=28000000&&hz<29700000)return '10m';
   if(hz>=50000000&&hz<54000000)return '6m';   return '---';
 }
+const shTable = [
+  [0,0],[300,50],[400,100],[600,150],[850,200],[1100,250],[1200,300],[1500,350],
+  [1650,400],[1800,450],[1950,500],[2100,600],[2200,800],[2300,1200],[2400,1400],[2500,1700],
+  [2600,2000],[2700,2400],[2800,3000],[2900,3200],[3000,3500],[3200,4000],[3500,3500],[4000,4000]];
+function shBwDisplay(pos, mode) {
+  if (mode==='5') return '9000 Hz';
+  if (mode==='4') return '16000 Hz';
+  if (pos<1 || pos>=shTable.length) return '---';
+  const cwDig = mode==='3' || mode==='C';
+  return (cwDig ? shTable[pos][1] : shTable[pos][0]) + ' Hz';
+}
+function isShiftDisplay(steps) {
+  const hz=steps*20;
+  return hz===0 ? '0' : hz>0 ? `+${hz}` : `${hz}`;
+}
 
-// ── CAT command builders ──────────────────────────────────────────────────────
+// ── CAT command builders ──────────────────────────────────────────────────
 const vfo    = ()  => state.mainFocused ? '0' : '1';
 const modeCmd= m   => `MD${vfo()}${m};`;
 const antCmd = n   => `AN${vfo()}${n};`;
 const ipoCmd = n   => `PA${vfo()}${n};`;
 const attCmd = n   => `RA${vfo()}${n};`;
 
-function scopeCmd(mode) {
-  const v=vfo();
-  sendCmd(`SS${v}650000;`);
-  if (mode==='cursor') sendCmd(`SS${v}680000;`);
-  else if (mode==='fix') sendCmd(`SS${v}6B0000;`);
-}
-function ssbCmd(n) {
-  const c={1:'56',2:'57',3:'58',4:'59',5:'54',6:'55'};
-  sendCmd(`SS${vfo()}${c[n]}0000;`);
-}
 function rxCmd(which) {
   const r1=which==='rx1'?!state.rx1Active:state.rx1Active;
   const r2=which==='rx2'?!state.rx2Active:state.rx2Active;
@@ -599,25 +541,30 @@ function freqStep(dir) {
 }
 function bandStep(dir) { sendCmd(dir>0?`BU${vfo()};`:`BD${vfo()};`); }
 
-// External tuner — press-and-hold (server handles mode/power save+restore)
-function extTuneDown() { sendCmd('EXTTUNE_DOWN'); }
-function extTuneUp()   { sendCmd('EXTTUNE_UP'); }
-
 // Sliders with 150 ms debounce
 function sliderChange(id, raw) {
-  const v=parseInt(raw);
-  const dv=document.getElementById(id+'-val');
-  if (dv) dv.textContent = id==='sl-pwr' ? v.toString().padStart(3,'0') : toDisp(v);
+  const v   = parseInt(raw);
+  const x   = state.mainFocused ? 0 : 1;
+  const mode= state.mainFocused ? state.mainMode : state.subMode;
+  const dv  = document.getElementById(id+'-val');
+  if (id === 'sl-width') {
+    if (dv) dv.textContent = shBwDisplay(v, mode);
+  } else if (id === 'sl-shift') {
+    if (dv) dv.textContent = isShiftDisplay(v);
+    if (dv) dv.style.color = v !== 0 ? 'red' : 'gold';
+  }
   clearTimeout(timers[id]);
-  timers[id]=setTimeout(()=>{
+  timers[id] = setTimeout(() => {
     let cmd;
-    if      (id==='sl-rfgain')  cmd=`RG0${(255-v).toString().padStart(3,'0')};`;
-    else if (id==='sl-vol')     cmd=`AG0${v.toString().padStart(3,'0')};`;
-    else if (id==='sl-pwr')     cmd=`PC${v.toString().padStart(3,'0')};`;
-    else if (id==='sl-srfgain') cmd=`RG1${(255-v).toString().padStart(3,'0')};`;
-    else if (id==='sl-svol')    cmd=`AG1${v.toString().padStart(3,'0')};`;
+    if (id === 'sl-width') {
+      cmd = `SH${x}0${v.toString().padStart(2,'0')};`;
+    } else if (id === 'sl-shift') {
+      const hz   = v * 20;
+      const sign = hz >= 0 ? '+' : '-';
+      cmd = `IS${x}0${sign}${Math.abs(hz).toString().padStart(4,'0')};`;
+    }
     if (cmd) sendCmd(cmd);
-  },150);
+  }, 150);
 }
 
 // COM port setup
@@ -819,8 +766,7 @@ window.onload = () => {
   document.querySelectorAll('input.vslider').forEach(sl => {
     sl.addEventListener('wheel', e => {
       e.preventDefault();
-      const step = sl.id === 'sl-pwr' ? 1 : 5;
-      const newVal = Math.min(parseInt(sl.max), Math.max(parseInt(sl.min), parseInt(sl.value) + (e.deltaY < 0 ? step : -step)));
+      const newVal = Math.min(parseInt(sl.max), Math.max(parseInt(sl.min), parseInt(sl.value) + (e.deltaY < 0 ? 1 : -1)));
       sl.value = newVal;
       sliderChange(sl.id, newVal);
     }, { passive: false });
@@ -922,7 +868,6 @@ class RadioState
     public bool   Connected   { get; set; }
     public string ComPort     { get; set; } = "";
     public string RadioModel  { get; set; } = "FTDX101D";
-    public int    MaxPower    { get; set; } = 100;
     public long   MainFreqHz  { get; set; }
     public long   SubFreqHz   { get; set; }
     public bool   MainFocused { get; set; } = true;
@@ -934,20 +879,13 @@ class RadioState
     public int    SubIpo      { get; set; }
     public int    MainAtt     { get; set; }
     public int    SubAtt      { get; set; }
-    public int    RfGain      { get; set; } = 255;
-    public int    SubRfGain   { get; set; } = 255;
-    public int    Volume      { get; set; }
-    public int    SubVolume   { get; set; }
-    public int    Power       { get; set; } = 100;
+    public int    WidthPos    { get; set; } = 20;
+    public int    ShiftSteps  { get; set; }
     public bool   Rx1Active   { get; set; }
     public bool   Rx2Active   { get; set; }
     public bool   NrOn        { get; set; }
     public bool   DnfOn       { get; set; }
     public bool   RfSqlOn     { get; set; }
-    public bool   ITuneOn     { get; set; }
-    public string ScopeMode   { get; set; } = "center";
-    public string DspSpan     { get; set; } = "SSB1";
-    public double LevelShift  { get; set; }
     public string Temp        { get; set; } = "--\u00b0C";
     public string TempColor   { get; set; } = "cyan";
 }
@@ -964,15 +902,6 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
     private string[] _pollCmds = BuildPollCmds(true);
     private int      _pollIndex;
     private long     _tuningUntil = 0; // ticks — poll is paused while tuning
-
-    // saved for external tuner restore
-    private string _savedMode  = "";
-    private string _savedPower = "";
-
-    // saved for mute-both restore
-    private int  _savedMainVol;
-    private int  _savedSubVol;
-    private bool _bothMuted;
 
     // ── connect / disconnect ──────────────────────────────────────────────────
     public void Connect(string portName)
@@ -998,7 +927,6 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
             {
                 string num = idResp[2..].TrimStart('0');
                 state.RadioModel = num == "682" ? "FTDX101MP" : "FTDX101D";
-                state.MaxPower   = num == "682" ? 200 : 100;
             }
 
             // initial full read of all parameters
@@ -1121,49 +1049,7 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
             if (cmd.StartsWith("CONNECT:"))  { Connect(cmd[8..]); _ = BroadcastStateAsync(); return; }
             if (cmd == "DISCONNECT")         { Disconnect();       _ = BroadcastStateAsync(); return; }
 
-            if (cmd == "LEV+")     { state.LevelShift = Math.Min(30, state.LevelShift + 1); SendLev(); return; }
-            if (cmd == "LEV-")     { state.LevelShift = Math.Max(-30, state.LevelShift - 1); SendLev(); return; }
-            if (cmd == "LEVRESET") { state.LevelShift = 0; SendLev(); return; }
-
-            if (cmd == "MUTEBOTH")
-            {
-                if (!_bothMuted)
-                {
-                    _savedMainVol = state.Volume;
-                    _savedSubVol  = state.SubVolume;
-                    SendCommand("AG0000;");
-                    SendCommand("AG1000;");
-                    _bothMuted = true;
-                }
-                else
-                {
-                    SendCommand($"AG0{_savedMainVol:D3};");
-                    SendCommand($"AG1{_savedSubVol:D3};");
-                    _bothMuted = false;
-                }
-                return;
-            }
-
-            if (cmd == "EXTTUNE_DOWN")
-            {
-                if (state.ITuneOn) return;
-                _savedMode  = SendReceive("MD0;");
-                var pr      = SendReceive("PC;");
-                _savedPower = pr.Length >= 5 ? pr[2..5] : "100";
-                SendCommand("PC010;");
-                SendCommand("MD05;");
-                SendCommand("MX1;");
-                return;
-            }
-            if (cmd == "EXTTUNE_UP")
-            {
-                SendCommand("MX0;");
-                if (!string.IsNullOrEmpty(_savedMode))  SendCommand(_savedMode  + ";");
-                if (!string.IsNullOrEmpty(_savedPower)) SendCommand("PC" + _savedPower + ";");
-                return;
-            }
-
-            // frequency tuning — update state immediately + pause poll for 300ms
+            // frequency tuning
             if (cmd.StartsWith("FA") || cmd.StartsWith("FB"))
             {
                 _tuningUntil = DateTime.UtcNow.AddMilliseconds(300).Ticks;
@@ -1184,14 +1070,7 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
         catch { }
     }
 
-    private void SendLev()
-    {
-        var v = state.LevelShift;
-        var fmt = v.ToString("+00.0;-00.0", System.Globalization.CultureInfo.InvariantCulture);
-        SendCommand($"SS{(state.MainFocused ? 0 : 1)}4{fmt};");
-    }
-
-    // ── serial I/O ────────────────────────────────────────────────────────────
+    // ── serial I/O
     private string SendReceive(string cmd)
     {
         lock (_lock)
@@ -1225,18 +1104,15 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
         else if (resp.StartsWith("EX030107") && resp.Length >= 9)
             state.RfSqlOn = resp[8] == '1';
 
-        else if ((resp.StartsWith("SS06") || resp.StartsWith("SS16")) && resp.Length >= 5
-                 && (resp[2] == '0') == state.MainFocused)
-            state.ScopeMode = resp[4] == '8' ? "cursor" : resp[4] == '5' ? "center" : "fix";
+        else if (resp.StartsWith("SH") && resp.Length >= 6
+                 && (resp[2] == '0') == state.MainFocused
+                 && int.TryParse(resp[4..6], out int shv))
+            state.WidthPos = shv;
 
-        else if ((resp.StartsWith("SS05") || resp.StartsWith("SS15")) && resp.Length >= 5
-                 && (resp[2] == '0') == state.MainFocused)
-            state.DspSpan = resp[4] switch
-            {
-                '6' => "SSB1", '7' => "SSB2", '8' => "SSB3",
-                '9' => "SSB4", '4' => "SSB5", '5' => "SSB6",
-                _   => state.DspSpan
-            };
+        else if (resp.StartsWith("IS") && resp.Length >= 9
+                 && (resp[2] == '0') == state.MainFocused
+                 && int.TryParse(resp[5..9], out int isAbs))
+            state.ShiftSteps = (resp[4] == '-' ? -isAbs : isAbs) / 20;
 
         else if (resp.StartsWith("MD") && resp.Length >= 4 && (resp[2] == '0' || resp[2] == '1'))
         {
@@ -1272,21 +1148,6 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
             state.Rx1Active = resp == "FR00" || resp == "FR01";
             state.Rx2Active = resp == "FR00" || resp == "FR10";
         }
-        else if (resp.StartsWith("RG0") && resp.Length >= 6 && int.TryParse(resp[3..6], out int rg0))
-            state.RfGain = 255 - rg0;
-
-        else if (resp.StartsWith("AG0") && resp.Length >= 6 && int.TryParse(resp[3..6], out int ag0))
-            state.Volume = ag0;
-
-        else if (resp.StartsWith("PC") && resp.Length >= 5 && int.TryParse(resp[2..5], out int pc))
-            state.Power = pc;
-
-        else if (resp.StartsWith("RG1") && resp.Length >= 6 && int.TryParse(resp[3..6], out int rg1))
-            state.SubRfGain = 255 - rg1;
-
-        else if (resp.StartsWith("AG1") && resp.Length >= 6 && int.TryParse(resp[3..6], out int ag1))
-            state.SubVolume = ag1;
-
         else if (resp.StartsWith("FA") && resp.Length >= 4
                  && long.TryParse(resp[2..(resp.Length - 1)], out long fa))
             state.MainFreqHz = fa * 10;
@@ -1294,9 +1155,6 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
         else if (resp.StartsWith("FB") && resp.Length >= 4
                  && long.TryParse(resp[2..(resp.Length - 1)], out long fb))
             state.SubFreqHz = fb * 10;
-
-        else if (resp.StartsWith("AC") && resp.Length >= 5)
-            state.ITuneOn = resp[4] == '1';
 
         else if (resp.StartsWith("VS") && resp.Length >= 3)
         {
@@ -1311,13 +1169,12 @@ class RadioEngine(RadioState state, JsonSerializerOptions jsonOpts,
         "FA;", "FB;",
         "RM9;", "EX030107;",
         "FA;", "FB;",
-        main?"SS06;":"SS16;", main?"SS05;":"SS15;", main?"MD0;":"MD1;", main?"SS04;":"SS14;",
+        main?"MD0;":"MD1;",
         "FA;", "FB;",
         main?"AN0;":"AN1;", main?"PA0;":"PA1;", main?"RA0;":"RA1;",
         main?"NR0;":"NR1;", main?"BC0;":"BC1;", "FR;",
         "FA;", "FB;",
-        "RG0;", "AG0;", "PC;",
-        "FA;", "FB;",
-        "RG1;", "AG1;", "AC;", "VS;"
+        main?"SH0;":"SH1;", main?"IS0;":"IS1;",
+        "VS;"
     ];
 }
