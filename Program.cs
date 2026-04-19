@@ -9,7 +9,7 @@ using NAudio.Wave;
 
 
 // The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
-// version 0.9 by Kees, ON9KVE (based on The101Box 3.01)
+// version 0.9  by Kees, ON9KVE (based on The101Box 3.01)
 // date : 19 apr 2026
 
 
