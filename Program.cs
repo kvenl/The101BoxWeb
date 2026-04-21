@@ -9,10 +9,10 @@ using NAudio.Wave;
 
 
 // The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
-// Version 1.3 by Kees, ON9KVE (based on The101Box 3.01)
+// Version 1.4 by Kees, ON9KVE (based on The101Box 3.01)
 // date : 21 apr 2026
 
-const string AppVersion = "v1.3 by Kees, ON9KVE";
+const string AppVersion = "v1.4 by Kees, ON9KVE";
 
 // ── parse command-line arguments
 var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
@@ -639,6 +639,8 @@ async function loadPorts() {
     const r=await fetch('/api/ports'); const ports=await r.json();
     const sel=document.getElementById('port-sel');
     sel.innerHTML=ports.length ? ports.map(p=>`<option>${p}</option>`).join('') : '<option>No ports found</option>';
+    const com4 = [...sel.options].find(o => o.value === 'COM4');
+    if (com4) sel.value = 'COM4';
   } catch(e) { console.error(e); }
 }
 function connectToPort()  { const p=document.getElementById('port-sel').value; if(p&&!p.startsWith('No '))sendCmd('CONNECT:'+p); }
@@ -887,7 +889,7 @@ class AudioEngine
             _waveIn = new WaveInEvent
             {
                 DeviceNumber       = deviceIndex,
-                WaveFormat         = new WaveFormat(16000, 16, 1), // 16 kHz, 16-bit, mono
+                WaveFormat         = new WaveFormat(16000, 16, 2), // 16 kHz, 16-bit, stereo
                 BufferMilliseconds = 100
             };
             _waveIn.DataAvailable    += OnDataAvailable;
@@ -924,7 +926,17 @@ class AudioEngine
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
         if (e.BytesRecorded == 0 || _audioClients.IsEmpty) return;
-        var seg  = new ArraySegment<byte>(e.Buffer, 0, e.BytesRecorded);
+        // mix stereo (L=MAIN, R=SUB) down to mono
+        int frames   = e.BytesRecorded / 4; // 4 bytes per stereo frame (2×16-bit)
+        var mono     = new byte[frames * 2];
+        for (int i = 0; i < frames; i++)
+        {
+            short l = BitConverter.ToInt16(e.Buffer, i * 4);
+            short r = BitConverter.ToInt16(e.Buffer, i * 4 + 2);
+            short m = (short)((l + r) / 2);
+            BitConverter.TryWriteBytes(mono.AsSpan(i * 2), m);
+        }
+        var seg  = new ArraySegment<byte>(mono);
         var dead = new List<string>();
         foreach (var (id, ws) in _audioClients)
         {
