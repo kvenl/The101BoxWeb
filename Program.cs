@@ -9,11 +9,12 @@ using NAudio.Wave;
 
 
 // The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
-// version 0.9  by Kees, ON9KVE (based on The101Box 3.01)
-// date : 19 apr 2026
+// Version 1.2 by Kees, ON9KVE (based on The101Box 3.01)
+// date : 21 apr 2026
 
+const string AppVersion = "v1.2 by Kees, ON9KVE";
 
-// ── parse command-line arguments ─────────────────────────────────────────────
+// ── parse command-line arguments
 var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
 string comPort  = Arg(cmdArgs, "--port",  "");
 int    httpPort = int.Parse(Arg(cmdArgs, "--http", "5000"));
@@ -186,7 +187,7 @@ static void DrawStatus(RadioState st, ConcurrentDictionary<string, WebSocket> cl
     string hr  = new string('═', W);
     string hr2 = new string('─', W);
 
-    L(hr); L("  The101BoxWeb  ─  Yaesu FTDX101 Remote Control"); L(hr);
+    L(hr); L("  The101BoxWeb  ─  Yaesu FTDX101 Remote Control"); L($"  {AppVersion}"); L(hr);
     L($"  URL     :  http://localhost:{port}");
     L(string.IsNullOrEmpty(localIp) ? "" : $"  Network :  http://{localIp}:{port}");
     L();
@@ -248,6 +249,20 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 #st-radio-lbl { flex:1; }
 #st-disc { margin-left:auto; background:#333; color:#ccc; border:1px solid #555; padding:2px 8px; cursor:pointer; font-size:11px; }
 #st-disc:hover { background:#555; }
+#zoom-sel { background:#333; color:#ccc; border:1px solid #555; padding:2px 4px; font-size:11px; cursor:pointer; }
+
+/* ── Frequency entry popup ── */
+#freq-popup { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999; align-items:center; justify-content:center; }
+#freq-popup.show { display:flex; }
+#freq-popup-box { background:#1e1e1e; border:1px solid #555; border-radius:6px; padding:16px 20px; display:flex; flex-direction:column; gap:10px; min-width:220px; }
+#freq-popup-box label { color:#aaa; font-size:12px; }
+#freq-popup-box span  { color:#ffcc00; font-size:13px; font-weight:bold; }
+#freq-entry { background:#111; color:#fff; border:1px solid #666; border-radius:4px; padding:6px 8px; font-size:18px; width:100%; box-sizing:border-box; text-align:right; }
+#freq-entry:focus { outline:none; border-color:#ffcc00; }
+#freq-popup-btns { display:flex; gap:8px; justify-content:flex-end; }
+#freq-popup-btns button { background:#333; color:#ccc; border:1px solid #555; padding:4px 14px; cursor:pointer; border-radius:4px; font-size:12px; }
+#freq-popup-btns button:hover { background:#555; }
+#freq-popup-btns button.ok { color:#ffcc00; border-color:#ffcc00; }
 
 /* ── Main canvas (pixel-exact layout from Form1.Designer.cs, 727×241) ── */
 #canvas-wrap { padding:4px; overflow-x:auto; background:#111; }
@@ -265,10 +280,8 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 .btn.active { background:#8b0000 !important; }
 .btn.active:hover { background:#aa0000 !important; }
 
-#btn-rx1
-#btn-rx1.active { background:#8b0000; color:#ff0; }
-#btn-rx2 { background:#00008b; color:silver; }
-#btn-rx2.active { background:#8b0000; color:#ff0; }
+#btn-rx1.active { background:silver   !important; color:#000 !important; }
+#btn-rx2.active { background:#00008b !important; color:#fff !important; }
 
 /* Frequency boxes */
 .freq-box {
@@ -321,6 +334,14 @@ input[type=range].vslider::-moz-range-thumb {
 
 <!-- Status bar (always visible) -->
 <div id="status-bar">
+  <select id="zoom-sel" title="Zoom panel" onchange="applyZoom(this.value)">
+    <option value="0.75">75%</option>
+    <option value="1" selected>100%</option>
+    <option value="1.25">125%</option>
+    <option value="1.5">150%</option>
+    <option value="1.75">175%</option>
+    <option value="2">200%</option>
+  </select>
   <span class="st-dot st-warn" id="st-ws-dot">&#9679;</span>
   <span id="st-ws-lbl">Server: connecting...</span>
   <span style="color:#444; margin:0 6px;">&#x2502;</span>
@@ -331,9 +352,20 @@ input[type=range].vslider::-moz-range-thumb {
 </div>
 
 <!-- Canvas: desktop layout matching Design101 (551×241) -->
+<div id="freq-popup" onclick="if(event.target===this)closeFreqEntry()">
+  <div id="freq-popup-box">
+    <label>Enter frequency in kHz for <span id="freq-popup-vfo">MAIN</span> VFO:</label>
+    <input id="freq-entry" type="text" inputmode="decimal" placeholder="e.g. 14225 or 3652.5"
+      onkeydown="if(event.key==='Enter')confirmFreqEntry();else if(event.key==='Escape')closeFreqEntry();">
+    <div id="freq-popup-btns">
+      <button onclick="closeFreqEntry()">Cancel</button>
+      <button class="ok" onclick="confirmFreqEntry()">Set ↵</button>
+    </div>
+  </div>
+</div>
 <div id="canvas-wrap"><div id="canvas">
-  <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:54px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO">&nbsp;</div>
-  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:46px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO">&nbsp;</div>
+  <div id="freq-m" class="freq-box" style="left:1px;top:2px;width:189px;height:54px;" onclick="sendCmd('VS0;')" title="Click to focus Main VFO  Right-click to enter frequency" oncontextmenu="openFreqEntry('main');return false;">&nbsp;</div>
+  <div id="freq-s" class="freq-box" style="left:1px;top:62px;width:189px;height:46px;" onclick="sendCmd('VS1;')" title="Click to focus Sub VFO  Right-click to enter frequency" oncontextmenu="openFreqEntry('sub');return false;">&nbsp;</div>
   <div id="temp-val" style="left:29px;top:142px;width:44px;height:20px;">--&#176;C</div>
 
   <!-- Left: step, port, connect -->
@@ -351,17 +383,17 @@ input[type=range].vslider::-moz-range-thumb {
 
   <!-- Width / Shift sliders (x=98 / x=145, matching Design101) -->
   <div class="sl-lbl" style="left:98px;top:111px;width:45px;">WIDTH</div>
-  <input type="range" class="vslider" id="sl-width" min="1" max="23" value="20" style="left:106px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-width',this.value)">
+  <input type="range" class="vslider" id="sl-width" min="1" max="23" value="20" style="left:106px;top:123px;width:28px;height:100px;" title="Right-click to reset" oninput="sliderChange('sl-width',this.value)" oncontextmenu="resetWidth();return false;">
   <div class="sl-val" id="sl-width-val" style="left:98px;top:226px;width:45px;height:16px;cursor:pointer;" title="Double-click to reset" ondblclick="resetWidth()">---</div>
 
   <div class="sl-lbl" style="left:145px;top:111px;width:45px;">SHIFT</div>
-  <input type="range" class="vslider" id="sl-shift" min="-60" max="60" value="0" style="left:153px;top:123px;width:28px;height:100px;" oninput="sliderChange('sl-shift',this.value)">
+  <input type="range" class="vslider" id="sl-shift" min="-60" max="60" value="0" style="left:153px;top:123px;width:28px;height:100px;" title="Right-click to reset" oninput="sliderChange('sl-shift',this.value)" oncontextmenu="resetShift();return false;">
   <div class="sl-val" id="sl-shift-val" style="left:145px;top:226px;width:45px;height:16px;cursor:pointer;" title="Double-click to reset" ondblclick="resetShift()">0</div>
 
   <!-- Col1: VFO / mode -->
   <button class="btn" style="left:195px;top:1px;width:88px;height:40px;" onclick="bandStep(1)" oncontextmenu="bandStep(-1);return false;" title="Click=Band up  Right-click=Band down"><span id="band" style="font-size:13px;">BAND</span></button>
-  <button class="btn" style="left:195px;top:41px;width:44px;height:40px;" onclick="freqStep(-1)">[-]</button>
-  <button class="btn" style="left:239px;top:41px;width:44px;height:40px;" onclick="freqStep(1)">[+]</button>
+  <button class="btn" style="left:195px;top:41px;width:44px;height:40px;" onclick="freqStep(-1)" oncontextmenu="freqMHz(-1);return false;" title="Click=step down  Right-click=−1 MHz">[-]</button>
+  <button class="btn" style="left:239px;top:41px;width:44px;height:40px;" onclick="freqStep(1)" oncontextmenu="freqMHz(1);return false;" title="Click=step up  Right-click=+1 MHz">[+]</button>
   <button class="btn" style="left:195px;top:81px;width:88px;height:40px;" onclick="sendCmd('SV;')">&lt;===&gt;</button>
   <button class="btn" id="btn-usb" style="left:195px;top:121px;width:44px;height:40px;" onclick="sendCmd(modeCmd('2'))">USB</button>
   <button class="btn" id="btn-lsb" style="left:239px;top:121px;width:44px;height:40px;" onclick="sendCmd(modeCmd('1'))">LSB</button>
@@ -533,10 +565,36 @@ function nrCmd()    { sendCmd(`NR${vfo()}${state.nrOn ?'0':'1'};`); }
 function dnfCmd()   { sendCmd(`BC${vfo()}${state.dnfOn?'0':'1'};`); }
 function rfSqlCmd() { sendCmd(state.rfSqlOn?'EX0301070;':'EX0301071;'); }
 
+let _freqEntryVfo = 'main';
+function openFreqEntry(vfo) {
+  _freqEntryVfo = vfo;
+  const hz = vfo==='main' ? state.mainFreqHz : state.subFreqHz;
+  document.getElementById('freq-popup-vfo').textContent = vfo==='main' ? 'MAIN' : 'SUB';
+  document.getElementById('freq-entry').value = (hz / 1000).toString();
+  document.getElementById('freq-popup').classList.add('show');
+  setTimeout(() => { const el=document.getElementById('freq-entry'); el.focus(); el.select(); }, 50);
+}
+function closeFreqEntry() {
+  document.getElementById('freq-popup').classList.remove('show');
+}
+function confirmFreqEntry() {
+  const raw = document.getElementById('freq-entry').value.trim().replace(',','.');
+  const khz = parseFloat(raw);
+  if (isNaN(khz) || khz <= 0) { closeFreqEntry(); return; }
+  const hz = Math.round(khz * 1000);
+  const cmd = (_freqEntryVfo==='main' ? 'FA' : 'FB') + hz.toString().padStart(9,'0') + ';';
+  sendCmd(cmd);
+  closeFreqEntry();
+}
 function freqStep(dir) {
   const step=parseInt(document.getElementById('step').value);
   const freq=state.mainFocused?state.mainFreqHz:state.subFreqHz;
   const nf=Math.max(0,freq+dir*step);
+  sendCmd(`${state.mainFocused?'FA':'FB'}${nf.toString().padStart(9,'0')};`);
+}
+function freqMHz(dir) {
+  const freq=state.mainFocused?state.mainFreqHz:state.subFreqHz;
+  const nf=Math.max(0,freq+dir*1000000);
   sendCmd(`${state.mainFocused?'FA':'FB'}${nf.toString().padStart(9,'0')};`);
 }
 function bandStep(dir) { sendCmd(dir>0?`BU${vfo()};`:`BD${vfo()};`); }
@@ -588,6 +646,12 @@ async function loadPorts() {
 function connectToPort()  { const p=document.getElementById('port-sel').value; if(p&&!p.startsWith('No '))sendCmd('CONNECT:'+p); }
 function disconnectPort() { sendCmd('DISCONNECT'); }
 function toggleConnect()  { if (state.connected) disconnectPort(); else connectToPort(); }
+function applyZoom(factor) {
+  document.getElementById('canvas-wrap').style.zoom = factor;
+  localStorage.setItem('panelZoom', factor);
+  const sel = document.getElementById('zoom-sel');
+  if (sel) sel.value = factor;
+}
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 let audioWs       = null;
@@ -772,6 +836,8 @@ function initKnob() {
 }
 
 window.onload = () => {
+  const savedZoom = localStorage.getItem('panelZoom') || '1';
+  applyZoom(savedZoom);
   loadPorts(); connect(); loadAudioDevices(); connectAudioWs(); initKnob();
   document.querySelectorAll('input.vslider').forEach(sl => {
     sl.addEventListener('wheel', e => {
