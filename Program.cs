@@ -9,10 +9,10 @@ using NAudio.Wave;
 
 
 // The101BoxWeb: a simple ASP.NET Core app to control Yaesu FTDX101 radios via serial port, with a pixel-exact HTML/JS UI matching the desktop app.
-// Version 1.2 by Kees, ON9KVE (based on The101Box 3.01)
+// Version 1.3 by Kees, ON9KVE (based on The101Box 3.01)
 // date : 21 apr 2026
 
-const string AppVersion = "v1.2 by Kees, ON9KVE";
+const string AppVersion = "v1.3 by Kees, ON9KVE";
 
 // ── parse command-line arguments
 var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
@@ -266,7 +266,7 @@ body { background:#111; color:#ccc; font-family:Verdana,sans-serif; font-size:12
 
 /* ── Main canvas (pixel-exact layout from Form1.Designer.cs, 727×241) ── */
 #canvas-wrap { padding:4px; overflow-x:auto; background:#111; }
-#canvas { position:relative; width:551px; height:244px; background:#0d0d0d; }
+#canvas { position:relative; width:551px; height:248px; background:#0d0d0d; }
 
 /* Buttons — DarkGreen / Yellow / White border, matching desktop exactly */
 .btn {
@@ -414,9 +414,7 @@ input[type=range].vslider::-moz-range-thumb {
   <button class="btn" id="btn-ipo"  style="left:373px;top:1px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(0))">IPO</button>
   <button class="btn" id="btn-amp1" style="left:373px;top:41px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(1))">AMP1</button>
   <button class="btn" id="btn-amp2" style="left:373px;top:81px;width:88px;height:40px;" onclick="sendCmd(ipoCmd(2))">AMP2</button>
-  <canvas id="vfo-knob" width="84" height="84" style="position:absolute;left:420px;top:130px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
-  <div style="position:absolute;left:418px;top:218px;width:88px;text-align:center;font-size:8pt;color:#ff0;font-weight:bold;">VFO TUNE</div>
-  <div style="position:absolute;left:418px;top:231px;width:88px;text-align:center;font-size:7pt;color:#888;">uses step</div>
+  <canvas id="vfo-knob" width="120" height="120" style="position:absolute;left:402px;top:127px;cursor:grab;" title="VFO Tuning — drag or scroll"></canvas>
 
   <!-- Col4: ATT / NR / BC — matching Design101 x=462/505 -->
   <button class="btn" id="btn-att0"  style="left:462px;top:1px;width:44px;height:40px;" onclick="sendCmd(attCmd(0))">ATT<br>OFF</button>
@@ -769,6 +767,12 @@ function initKnob() {
     ctx.beginPath(); ctx.arc(CX, CY, 6, 0, Math.PI*2);
     ctx.fillStyle = '#333'; ctx.fill();
     ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+    // static label
+    ctx.font = 'bold 9px Verdana,sans-serif';
+    ctx.fillStyle = '#ff0';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('VFO TUNE', CX, CY + 22);
   }
 
   function evAngle(e) {
